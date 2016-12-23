@@ -360,6 +360,7 @@ WEBIDL_FILES = [
     'PaintWorkletGlobalScope.webidl',
     'PannerNode.webidl',
     'ParentNode.webidl',
+    'PaymentAddress.webidl',
     'Performance.webidl',
     'PerformanceEntry.webidl',
     'PerformanceMark.webidl',
