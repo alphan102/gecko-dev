@@ -6,12 +6,14 @@
 
 EXPORTS.mozilla.dom += [
     'PaymentAddress.h',
-    'PaymentResponse.h'
+    'PaymentRequest.h',
+    'PaymentResponse.h',
 ]
 
 UNIFIED_SOURCES += [
     'PaymentAddress.cpp',
-    'PaymentResponse.cpp'
+    'PaymentRequest.cpp',
+    'PaymentResponse.cpp',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
