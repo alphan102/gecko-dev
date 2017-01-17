@@ -7,12 +7,14 @@
 EXPORTS.mozilla.dom += [
     'PaymentAddress.h',
     'PaymentRequest.h',
+    'PaymentRequestUpdateEvent.h',
     'PaymentResponse.h',
 ]
 
 UNIFIED_SOURCES += [
     'PaymentAddress.cpp',
     'PaymentRequest.cpp',
+    'PaymentRequestUpdateEvent.cpp',
     'PaymentResponse.cpp',
 ]
 
