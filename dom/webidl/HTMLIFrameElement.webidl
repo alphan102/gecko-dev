@@ -24,6 +24,8 @@ interface HTMLIFrameElement : HTMLElement {
   [SetterThrows, Pure]
            attribute boolean allowFullscreen;
   [SetterThrows, Pure]
+           attribute boolean allowPaymentRequest;
+  [SetterThrows, Pure]
            attribute DOMString width;
   [SetterThrows, Pure]
            attribute DOMString height;
