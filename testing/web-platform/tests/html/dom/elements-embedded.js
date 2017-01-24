@@ -27,6 +27,7 @@ var embeddedElements = {
     name: "string",
     sandbox: "settable tokenlist",
     allowFullscreen: "boolean",
+    allowPaymentRequest: "boolean",
     width: "string",
     height: "string",
 
