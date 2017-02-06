@@ -74,8 +74,8 @@ var SocialServiceInternal = {
                        ", exception: " + err);
       }
     }
-    let originUri = Services.io.newURI(origin, null, null);
-    return originUri.hostPort.replace('.', '-');
+    let originUri = Services.io.newURI(origin);
+    return originUri.hostPort.replace(".", "-");
   },
   orderedProviders(aCallback) {
     if (SocialServiceInternal.providerArray.length < 2) {
@@ -152,13 +152,13 @@ XPCOMUtils.defineLazyGetter(SocialServiceInternal, "providers", function() {
 
 function getOriginActivationType(origin) {
   // if this is an about uri, treat it as a directory
-  let URI = Services.io.newURI(origin, null, null);
+  let URI = Services.io.newURI(origin);
   let principal = Services.scriptSecurityManager.createCodebasePrincipal(URI, {});
   if (Services.scriptSecurityManager.isSystemPrincipal(principal) || origin == "moz-safe-about:home") {
     return "internal";
   }
 
-  let directories = Services.prefs.getCharPref("social.directories").split(',');
+  let directories = Services.prefs.getCharPref("social.directories").split(",");
   if (directories.indexOf(origin) >= 0)
     return "directory";
 
@@ -497,19 +497,19 @@ this.SocialService = {
   },
 
   _manifestFromData(type, data, installOrigin) {
-    let featureURLs = ['shareURL'];
-    let resolveURLs = featureURLs.concat(['postActivationURL']);
+    let featureURLs = ["shareURL"];
+    let resolveURLs = featureURLs.concat(["postActivationURL"]);
 
-    if (type == 'directory' || type == 'internal') {
+    if (type == "directory" || type == "internal") {
       // directory provided manifests must have origin in manifest, use that
-      if (!data['origin']) {
+      if (!data["origin"]) {
         Cu.reportError("SocialService.manifestFromData directory service provided manifest without origin.");
         return null;
       }
       installOrigin = data.origin;
     }
     // force/fixup origin
-    let URI = Services.io.newURI(installOrigin, null, null);
+    let URI = Services.io.newURI(installOrigin);
     let principal = Services.scriptSecurityManager.createCodebasePrincipal(URI, {});
     data.origin = principal.origin;
 
@@ -519,14 +519,14 @@ this.SocialService = {
       Cu.reportError("SocialService.manifestFromData manifest missing required urls.");
       return null;
     }
-    if (!data['name'] || !data['iconURL']) {
+    if (!data["name"] || !data["iconURL"]) {
       Cu.reportError("SocialService.manifestFromData manifest missing name or iconURL.");
       return null;
     }
     for (let url of resolveURLs) {
       if (data[url]) {
         try {
-          let resolved = Services.io.newURI(principal.URI.resolve(data[url]), null, null);
+          let resolved = Services.io.newURI(principal.URI.resolve(data[url]));
           if (!(resolved.schemeIs("http") || resolved.schemeIs("https"))) {
             Cu.reportError("SocialService.manifestFromData unsupported scheme '" + resolved.scheme + "' for " + principal.origin);
             return null;
@@ -551,7 +551,7 @@ this.SocialService = {
     if (data.installType == "internal" || data.installType == "directory") {
       url = data.manifest.origin;
     }
-    let requestingURI =  Services.io.newURI(url, null, null);
+    let requestingURI =  Services.io.newURI(url);
     let productName = brandBundle.GetStringFromName("brandShortName");
 
     let message = browserBundle.formatStringFromName("service.install.description",
@@ -620,7 +620,7 @@ this.SocialService = {
 
     // if installing from any website, the install must happen over https.
     // "internal" are installs from about:home or similar
-    if (data.installType != "internal" && !Services.io.newURI(data.origin, null, null).schemeIs("https")) {
+    if (data.installType != "internal" && !Services.io.newURI(data.origin).schemeIs("https")) {
       throw new Error("attempt to activate provider over unsecured channel: " + data.origin);
     }
 
@@ -702,7 +702,7 @@ function SocialProvider(input) {
   this.shareURL = input.shareURL;
   this.postActivationURL = input.postActivationURL;
   this.origin = input.origin;
-  let originUri = Services.io.newURI(input.origin, null, null);
+  let originUri = Services.io.newURI(input.origin);
   this.principal = Services.scriptSecurityManager.createCodebasePrincipal(originUri, {});
   this.ambientNotificationIcons = {};
   this.errorState = null;
@@ -774,7 +774,7 @@ SocialProvider.prototype = {
       return false;
     if (typeof uri == "string") {
       try {
-        uri = Services.io.newURI(uri, null, null);
+        uri = Services.io.newURI(uri);
       } catch (ex) {
         // an invalid URL can't be loaded!
         return false;
@@ -802,7 +802,7 @@ SocialProvider.prototype = {
   resolveUri: function resolveUri(url) {
     try {
       let fullURL = this.principal.URI.resolve(url);
-      return Services.io.newURI(fullURL, null, null);
+      return Services.io.newURI(fullURL);
     } catch (ex) {
       Cu.reportError("mozSocial: failed to resolve window URL: " + url + "; " + ex);
       return null;
@@ -811,7 +811,7 @@ SocialProvider.prototype = {
 };
 
 function getAddonIDFromOrigin(origin) {
-  let originUri = Services.io.newURI(origin, null, null);
+  let originUri = Services.io.newURI(origin);
   return originUri.host + ID_SUFFIX;
 }
 

@@ -623,7 +623,7 @@ ContentSearchUIController.prototype = {
     let searchWithHeader = document.getElementById("contentSearchSearchWithHeader");
     if (this.input.value) {
       searchWithHeader.innerHTML = this._strings.searchForSomethingWith;
-      searchWithHeader.querySelector('.contentSearchSearchWithHeaderSearchText').textContent = this.input.value;
+      searchWithHeader.querySelector(".contentSearchSearchWithHeaderSearchText").textContent = this.input.value;
     } else {
       searchWithHeader.textContent = this._strings.searchWithHeader;
     }
@@ -853,10 +853,9 @@ ContentSearchUIController.prototype = {
           "chrome://browser/skin/search-engine-placeholder.png");
       }
       img.setAttribute("src", uri);
-      img.addEventListener("load", function imgLoad() {
-        img.removeEventListener("load", imgLoad);
+      img.addEventListener("load", function() {
         URL.revokeObjectURL(uri);
-      });
+      }, {once: true});
       button.appendChild(img);
       button.style.width = buttonWidth + "px";
       button.setAttribute("title", engine.name);

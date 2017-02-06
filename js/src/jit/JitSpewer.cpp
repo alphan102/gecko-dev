@@ -31,11 +31,11 @@
 
 #ifndef JIT_SPEW_DIR
 # if defined(_WIN32)
-#  define JIT_SPEW_DIR ""
+#  define JIT_SPEW_DIR "."
 # elif defined(__ANDROID__)
-#  define JIT_SPEW_DIR "/data/local/tmp/"
+#  define JIT_SPEW_DIR "/data/local/tmp"
 # else
-#  define JIT_SPEW_DIR "/tmp/"
+#  define JIT_SPEW_DIR "/tmp"
 # endif
 #endif
 
@@ -439,8 +439,8 @@ jit::CheckLogging()
             "  logs          C1 and JSON visualization logging\n"
             "  logs-sync     Same as logs, but flushes between each pass (sync. compiled functions only).\n"
             "  profiling     Profiling-related information\n"
-            "  trackopts     Optimization tracking information gathered by SPS. "
-                            "(Note: call enableSPSProfiling() in your script to enable it).\n"
+            "  trackopts     Optimization tracking information gathered by the Gecko profiler. "
+                            "(Note: call enableGeckoProfiling() in your script to enable it).\n"
             "  trackopts-ext Encoding information about optimization tracking"
             "  dump-mir-expr Dump the MIR expressions\n"
             "  cfg           Control flow graph generation\n"

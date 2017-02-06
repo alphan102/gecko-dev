@@ -455,6 +455,27 @@ class MacroAssemblerARM : public Assembler
         MOZ_CRASH("Invalid data transfer addressing mode");
     }
 
+    // `outAny` is valid if and only if `out64` == Register64::Invalid().
+    void wasmLoadImpl(const wasm::MemoryAccessDesc& access, Register ptr, Register ptrScratch,
+                      AnyRegister outAny, Register64 out64);
+
+    // `valAny` is valid if and only if `val64` == Register64::Invalid().
+    void wasmStoreImpl(const wasm::MemoryAccessDesc& access, AnyRegister valAny, Register64 val64,
+                       Register ptr, Register ptrScratch);
+
+  protected:
+    // `outAny` is valid if and only if `out64` == Register64::Invalid().
+    void wasmUnalignedLoadImpl(const wasm::MemoryAccessDesc& access, Register ptr, Register ptrScratch,
+                               AnyRegister outAny, Register64 out64, Register tmp1, Register tmp2,
+                               Register tmp3);
+
+    // The value to be stored is in `floatValue` (if not invalid), `val64` (if not invalid),
+    // or in `valOrTmp` (if `floatValue` and `val64` are both invalid).  Note `valOrTmp` must
+    // always be valid.
+    void wasmUnalignedStoreImpl(const wasm::MemoryAccessDesc& access, FloatRegister floatValue,
+                                Register64 val64, Register ptr, Register ptrScratch, Register valOrTmp);
+
+  private:
     // Loads `byteSize` bytes, byte by byte, by reading from ptr[offset],
     // applying the indicated signedness (defined by isSigned).
     // - all three registers must be different.
@@ -469,7 +490,6 @@ class MacroAssemblerARM : public Assembler
     // - byteSize can be up to 4 bytes and no more (GPR are 32 bits on ARM).
     void emitUnalignedStore(unsigned byteSize, Register ptr, Register val, unsigned offset = 0);
 
-private:
     // Implementation for transferMultipleByRuns so we can use different
     // iterators for forward/backward traversals. The sign argument should be 1
     // if we traverse forwards, -1 if we traverse backwards.
@@ -536,12 +556,6 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
     void mov(ImmPtr imm, Register dest) {
         mov(ImmWord(uintptr_t(imm.value)), dest);
-    }
-    void mov(Register src, Address dest) {
-        MOZ_CRASH("NYI-IC");
-    }
-    void mov(Address src, Register dest) {
-        MOZ_CRASH("NYI-IC");
     }
 
     void branch(JitCode* c) {
@@ -1046,12 +1060,14 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void loadInt32x2(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void loadInt32x3(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void loadInt32x3(const BaseIndex& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
+    void loadInt32x4(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void storeInt32x1(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
     void storeInt32x1(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
     void storeInt32x2(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
     void storeInt32x2(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
     void storeInt32x3(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
     void storeInt32x3(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
+    void storeInt32x4(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
     void loadAlignedSimd128Int(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void storeAlignedSimd128Int(FloatRegister src, Address addr) { MOZ_CRASH("NYI"); }
     void loadUnalignedSimd128Int(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
@@ -1061,6 +1077,9 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
 
     void loadFloat32x3(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void loadFloat32x3(const BaseIndex& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
+    void loadFloat32x4(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
+    void storeFloat32x4(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
+
     void loadAlignedSimd128Float(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void storeAlignedSimd128Float(FloatRegister src, Address addr) { MOZ_CRASH("NYI"); }
     void loadUnalignedSimd128Float(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
@@ -1528,13 +1547,11 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
 
     void loadWasmGlobalPtr(uint32_t globalDataOffset, Register dest) {
-        loadPtr(Address(GlobalReg, globalDataOffset - WasmGlobalRegBias), dest);
+        loadPtr(Address(WasmTlsReg, offsetof(wasm::TlsData, globalArea) + globalDataOffset), dest);
     }
     void loadWasmPinnedRegsFromTls() {
         ScratchRegisterScope scratch(asMasm());
         ma_ldr(Address(WasmTlsReg, offsetof(wasm::TlsData, memoryBase)), HeapReg, scratch);
-        ma_ldr(Address(WasmTlsReg, offsetof(wasm::TlsData, globalData)), GlobalReg, scratch);
-        ma_add(Imm32(WasmGlobalRegBias), GlobalReg, scratch);
     }
 
     // Instrumentation for entering and leaving the profiler.

@@ -13,6 +13,7 @@
 
 #include "mozilla/AutoRestore.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/dom/HTMLDetailsElement.h"
 #include "mozilla/dom/HTMLSelectElement.h"
 #include "mozilla/dom/HTMLSummaryElement.h"
@@ -39,10 +40,14 @@
 #include "mozilla/StyleSetHandleInlines.h"
 #include "nsViewManager.h"
 #include "nsStyleConsts.h"
-#include "nsIDOMXULElement.h"
+#ifdef MOZ_XUL
+#include "nsXULElement.h"
+#include "mozilla/dom/BoxObject.h"
+#endif // MOZ_XUL
 #include "nsContainerFrame.h"
 #include "nsNameSpaceManager.h"
 #include "nsIComboboxControlFrame.h"
+#include "nsComboboxControlFrame.h"
 #include "nsIListControlFrame.h"
 #include "nsIDOMCharacterData.h"
 #include "nsPlaceholderFrame.h"
@@ -2436,7 +2441,6 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
   RefPtr<nsStyleContext> styleContext;
   styleContext = mPresShell->StyleSet()->ResolveStyleFor(aDocElement,
                                                          nullptr,
-                                                         ConsumeStyleBehavior::Consume,
                                                          LazyComputeBehavior::Allow);
 
   const nsStyleDisplay* display = styleContext->StyleDisplay();
@@ -2473,7 +2477,6 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
       // element.)
       styleContext = mPresShell->StyleSet()->ResolveStyleFor(aDocElement,
                                                              nullptr,
-                                                             ConsumeStyleBehavior::Consume,
                                                              LazyComputeBehavior::Allow);
       display = styleContext->StyleDisplay();
     }
@@ -3080,7 +3083,7 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsFrameConstructorState& aState,
     // The drop-down list's frame is created explicitly. The combobox frame shares its content
     // with the drop-down list.
     nsFrameState flags = NS_BLOCK_FLOAT_MGR;
-    nsContainerFrame* comboboxFrame =
+    nsComboboxControlFrame* comboboxFrame =
       NS_NewComboboxControlFrame(mPresShell, styleContext, flags);
 
     // Save the history state so we don't restore during construction
@@ -3094,10 +3097,6 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsFrameConstructorState& aState,
 
     aState.AddChild(comboboxFrame, aFrameItems, content, styleContext,
                     aParentFrame);
-
-    nsIComboboxControlFrame* comboBox = do_QueryFrame(comboboxFrame);
-    NS_ASSERTION(comboBox, "NS_NewComboboxControlFrame returned frame that "
-                 "doesn't implement nsIComboboxControlFrame");
 
     // Resolve pseudo element style for the dropdown list
     RefPtr<nsStyleContext> listStyle;
@@ -3113,7 +3112,7 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsFrameConstructorState& aState,
       listControlFrame->SetComboboxFrame(comboboxFrame);
     }
     // Notify combobox that it should use the listbox as it's popup
-    comboBox->SetDropDown(listFrame);
+    comboboxFrame->SetDropDown(listFrame);
 
     NS_ASSERTION(!listFrame->IsAbsPosContainingBlock(),
                  "Ended up with positioned dropdown list somehow.");
@@ -3134,10 +3133,29 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsFrameConstructorState& aState,
     // Create display and button frames from the combobox's anonymous content.
     // The anonymous content is appended to existing anonymous content for this
     // element (the scrollbars).
-
     nsFrameItems childItems;
-    CreateAnonymousFrames(aState, content, comboboxFrame,
-                          aItem.mPendingBinding, childItems);
+
+    // nsComboboxControlFrame needs special frame creation behavior for its first
+    // piece of anonymous content, which means that we can't take the normal
+    // ProcessChildren path.
+    AutoTArray<nsIAnonymousContentCreator::ContentInfo, 2> newAnonymousItems;
+    DebugOnly<nsresult> rv = GetAnonymousContent(content, comboboxFrame, newAnonymousItems);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    MOZ_ASSERT(newAnonymousItems.Length() == 2);
+
+    // Manually create a frame for the special NAC.
+    MOZ_ASSERT(newAnonymousItems[0].mContent == comboboxFrame->GetDisplayNode());
+    newAnonymousItems.RemoveElementAt(0);
+    nsIFrame* customFrame = comboboxFrame->CreateFrameForDisplayNode();
+    MOZ_ASSERT(customFrame);
+    customFrame->AddStateBits(NS_FRAME_ANONYMOUSCONTENTCREATOR_CONTENT);
+    childItems.AddChild(customFrame);
+
+    // The other piece of NAC can take the normal path.
+    FrameConstructionItemList fcItems;
+    AddFCItemsForAnonymousContent(aState, comboboxFrame, newAnonymousItems,
+                                  fcItems);
+    ConstructFramesFromItemList(aState, fcItems, comboboxFrame, childItems);
 
     comboboxFrame->SetInitialChildList(kPrincipalList, childItems);
 
@@ -4099,70 +4117,6 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
   }
 }
 
-// after the node has been constructed and initialized create any
-// anonymous content a node needs.
-nsresult
-nsCSSFrameConstructor::CreateAnonymousFrames(nsFrameConstructorState& aState,
-                                             nsIContent*              aParent,
-                                             nsContainerFrame*        aParentFrame,
-                                             PendingBinding*          aPendingBinding,
-                                             nsFrameItems&            aChildItems)
-{
-  AutoTArray<nsIAnonymousContentCreator::ContentInfo, 4> newAnonymousItems;
-  nsresult rv = GetAnonymousContent(aParent, aParentFrame, newAnonymousItems);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  uint32_t count = newAnonymousItems.Length();
-  if (count == 0) {
-    return NS_OK;
-  }
-
-  nsFrameConstructorState::PendingBindingAutoPusher pusher(aState,
-                                                           aPendingBinding);
-  TreeMatchContext::AutoAncestorPusher ancestorPusher(aState.mTreeMatchContext);
-  if (aState.mTreeMatchContext.mAncestorFilter.HasFilter()) {
-    ancestorPusher.PushAncestorAndStyleScope(aParent->AsElement());
-  } else {
-    ancestorPusher.PushStyleScope(aParent->AsElement());
-  }
-
-  nsIAnonymousContentCreator* creator = do_QueryFrame(aParentFrame);
-  NS_ASSERTION(creator,
-               "How can that happen if we have nodes to construct frames for?");
-
-  InsertionPoint insertion(aParentFrame, aParent);
-  for (uint32_t i=0; i < count; i++) {
-    nsIContent* content = newAnonymousItems[i].mContent;
-    NS_ASSERTION(content, "null anonymous content?");
-    NS_ASSERTION(!newAnonymousItems[i].mStyleContext, "Unexpected style context");
-    NS_ASSERTION(newAnonymousItems[i].mChildren.IsEmpty(),
-                 "This method is not currently used with frames that implement "
-                 "nsIAnonymousContentCreator::CreateAnonymousContent to "
-                 "output a list where the items have their own children");
-
-    nsIFrame* newFrame = creator->CreateFrameFor(content);
-    if (newFrame) {
-      NS_ASSERTION(content->GetPrimaryFrame(),
-                   "Content must have a primary frame now");
-      newFrame->AddStateBits(NS_FRAME_ANONYMOUSCONTENTCREATOR_CONTENT);
-      aChildItems.AddChild(newFrame);
-    } else {
-      FrameConstructionItemList items;
-      {
-        // Skip parent display based style-fixup during our
-        // AddFrameConstructionItems() call:
-        TreeMatchContext::AutoParentDisplayBasedStyleFixupSkipper
-          parentDisplayBasedStyleFixupSkipper(aState.mTreeMatchContext);
-
-        AddFrameConstructionItems(aState, content, true, insertion, items);
-      }
-      ConstructFramesFromItemList(aState, items, aParentFrame, aChildItems);
-    }
-  }
-
-  return NS_OK;
-}
-
 static void
 SetFlagsOnSubtree(nsIContent *aNode, uintptr_t aFlagsToSet)
 {
@@ -4579,11 +4533,25 @@ nsCSSFrameConstructor::BeginBuildingScrollFrame(nsFrameConstructorState& aState,
 
   // if there are any anonymous children for the scroll frame, create
   // frames for them.
-  // Pass a null pending binding: we don't care how constructors for any of
-  // this anonymous content order with anything else.  It's never been
-  // consistent anyway.
-  CreateAnonymousFrames(aState, aContent, gfxScrollFrame, nullptr,
-                        anonymousItems);
+  //
+  // We can't take the normal ProcessChildren path, because the NAC needs to
+  // be parented to the scrollframe, and everything else needs to be parented
+  // to the scrolledframe.
+  AutoTArray<nsIAnonymousContentCreator::ContentInfo, 4> scrollNAC;
+  DebugOnly<nsresult> rv = GetAnonymousContent(aContent, gfxScrollFrame, scrollNAC);
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  if (scrollNAC.Length() > 0) {
+    TreeMatchContext::AutoAncestorPusher ancestorPusher(aState.mTreeMatchContext);
+    if (aState.mTreeMatchContext.mAncestorFilter.HasFilter()) {
+      ancestorPusher.PushAncestorAndStyleScope(aContent->AsElement());
+    } else {
+      ancestorPusher.PushStyleScope(aContent->AsElement());
+    }
+
+    FrameConstructionItemList items;
+    AddFCItemsForAnonymousContent(aState, gfxScrollFrame, scrollNAC, items);
+    ConstructFramesFromItemList(aState, items, gfxScrollFrame, anonymousItems);
+  }
 
   aNewFrame = gfxScrollFrame;
 
@@ -5049,13 +5017,11 @@ nsCSSFrameConstructor::ResolveStyleContext(nsStyleContext* aParentStyleContext,
     if (aState) {
       result = styleSet->ResolveStyleFor(aContent->AsElement(),
                                          aParentStyleContext,
-                                         ConsumeStyleBehavior::Consume,
                                          LazyComputeBehavior::Assert,
                                          aState->mTreeMatchContext);
     } else {
       result = styleSet->ResolveStyleFor(aContent->AsElement(),
                                          aParentStyleContext,
-                                         ConsumeStyleBehavior::Consume,
                                          LazyComputeBehavior::Assert);
     }
   } else {
@@ -6973,9 +6939,9 @@ MaybeGetListBoxBodyFrame(nsIContent* aContainer, nsIContent* aChild)
 
   if (IsXULListBox(aContainer) &&
       aChild->IsXULElement(nsGkAtoms::listitem)) {
-    nsCOMPtr<nsIDOMXULElement> xulElement = do_QueryInterface(aContainer);
-    nsCOMPtr<nsIBoxObject> boxObject;
-    xulElement->GetBoxObject(getter_AddRefs(boxObject));
+    RefPtr<nsXULElement> xulElement = nsXULElement::FromContent(aContainer);
+    IgnoredErrorResult ignored;
+    nsCOMPtr<nsIBoxObject> boxObject = xulElement->GetBoxObject(ignored);
     nsCOMPtr<nsPIListBoxObject> listBoxObject = do_QueryInterface(boxObject);
     if (listBoxObject) {
       return listBoxObject->GetListBoxBody(false);
@@ -6984,7 +6950,7 @@ MaybeGetListBoxBodyFrame(nsIContent* aContainer, nsIContent* aChild)
 
   return nullptr;
 }
-#endif
+#endif // MOZ_XUL
 
 void
 nsCSSFrameConstructor::AddTextItemIfNeeded(nsFrameConstructorState& aState,
@@ -7370,30 +7336,37 @@ nsCSSFrameConstructor::ContentAppended(nsIContent*     aContainer,
     return rv;
   }
 
+  // The frame constructor uses this codepath both for bonafide newly-added
+  // content and for RestyleManager-driven frame construction (RECONSTRUCT_FRAME
+  // and lazy frame construction). If we're using the Servo style system, we
+  // want to ensure that styles get resolved in the first case, whereas for the
+  // second case they should have already been resolved if needed.
+  bool isNewlyAddedContentForServo = aContainer->IsStyledByServo() &&
+                                     !RestyleManager()->AsBase()->IsInStyleRefresh();
+
   // See comment in ContentRangeInserted for why this is necessary.
   if (!GetContentInsertionFrameFor(aContainer) &&
       !aContainer->IsActiveChildrenElement()) {
+    // We're punting on frame construction because there's no container frame.
+    // The Servo-backed style system handles this case like the lazy frame
+    // construction case.
+    if (isNewlyAddedContentForServo) {
+      aContainer->AsElement()->NoteDirtyDescendantsForServo();
+    }
     return NS_OK;
   }
 
   if (aAllowLazyConstruction &&
       MaybeConstructLazily(CONTENTAPPEND, aContainer, aFirstNewContent)) {
-    if (aContainer->IsStyledByServo()) {
+    if (isNewlyAddedContentForServo) {
       aContainer->AsElement()->NoteDirtyDescendantsForServo();
     }
     return NS_OK;
   }
 
   // We couldn't construct lazily. Make Servo eagerly traverse the subtree.
-  if (ServoStyleSet* set = mPresShell->StyleSet()->GetAsServo()) {
-    // We use the same codepaths to handle both of the following cases:
-    //   (a) Newly-appended content for which lazy frame construction is disallowed.
-    //   (b) Lazy frame construction driven by the restyle manager.
-    // We need the styles for (a). In the case of (b), the Servo traversal has
-    // already happened, so we don't need to do it again.
-    if (!RestyleManager()->AsBase()->IsInStyleRefresh()) {
-      set->StyleNewChildren(aContainer->AsElement());
-    }
+  if (isNewlyAddedContentForServo) {
+    mPresShell->StyleSet()->AsServo()->StyleNewChildren(aContainer->AsElement());
   }
 
   LAYOUT_PHASE_TEMP_EXIT();
@@ -7821,6 +7794,15 @@ nsCSSFrameConstructor::ContentRangeInserted(nsIContent*            aContainer,
     return rv;
   }
 
+  // The frame constructor uses this codepath both for bonafide newly-added
+  // content and for RestyleManager-driven frame construction (RECONSTRUCT_FRAME
+  // and lazy frame construction). If we're using the Servo style system, we
+  // want to ensure that styles get resolved in the first case, whereas for the
+  // second case they should have already been resolved if needed.
+  bool isNewlyAddedContentForServo = aContainer->IsStyledByServo() &&
+                                     !RestyleManager()->AsBase()->IsInStyleRefresh();
+
+
   // Put 'parentFrame' inside a scope so we don't confuse it with
   // 'insertion.mParentFrame' later.
   {
@@ -7829,6 +7811,12 @@ nsCSSFrameConstructor::ContentRangeInserted(nsIContent*            aContainer,
     // a parent. While its uncommon to change the structure of the default content itself, a label,
     // for example, can be reframed by having its value attribute set or removed.
     if (!parentFrame && !aContainer->IsActiveChildrenElement()) {
+      // We're punting on frame construction because there's no container frame.
+      // The Servo-backed style system handles this case like the lazy frame
+      // construction case.
+      if (isNewlyAddedContentForServo) {
+        aContainer->AsElement()->NoteDirtyDescendantsForServo();
+      }
       return NS_OK;
     }
 
@@ -7838,7 +7826,7 @@ nsCSSFrameConstructor::ContentRangeInserted(nsIContent*            aContainer,
 
     if (aAllowLazyConstruction &&
         MaybeConstructLazily(CONTENTINSERT, aContainer, aStartChild)) {
-      if (aContainer->IsStyledByServo()) {
+      if (isNewlyAddedContentForServo) {
         aContainer->AsElement()->NoteDirtyDescendantsForServo();
       }
       return NS_OK;
@@ -7846,15 +7834,8 @@ nsCSSFrameConstructor::ContentRangeInserted(nsIContent*            aContainer,
   }
 
   // We couldn't construct lazily. Make Servo eagerly traverse the subtree.
-  if (ServoStyleSet* set = mPresShell->StyleSet()->GetAsServo()) {
-    // We use the same codepaths to handle both of the following cases:
-    //   (a) Newly-appended content for which lazy frame construction is disallowed.
-    //   (b) Lazy frame construction driven by the restyle manager.
-    // We need the styles for (a). In the case of (b), the Servo traversal has
-    // already happened, so we don't need to do it again.
-    if (!RestyleManager()->AsBase()->IsInStyleRefresh()) {
-      set->StyleNewChildren(aContainer->AsElement());
-    }
+  if (isNewlyAddedContentForServo) {
+    mPresShell->StyleSet()->AsServo()->StyleNewChildren(aContainer->AsElement());
   }
 
   InsertionPoint insertion;
@@ -9253,8 +9234,13 @@ nsCSSFrameConstructor::GetInsertionPoint(nsIContent* aContainer,
   }
 
   if (!insertionElement) {
-    insertionElement = aContainer;
+    // The FindNested{,Single}InsertionPoint methods return null in the case
+    // that there is a binding with anonymous content but no insertion point.
+    // In that case the element doesn't belong in the flattened tree, and we
+    // don't want to render it.
+    return InsertionPoint();
   }
+
   InsertionPoint insertion(GetContentInsertionFrameFor(insertionElement),
                            insertionElement);
 
@@ -9320,7 +9306,6 @@ nsCSSFrameConstructor::MaybeRecreateFramesForElement(Element* aElement)
   // The parent has a frame, so try resolving a new context.
   RefPtr<nsStyleContext> newContext = mPresShell->StyleSet()->
     ResolveStyleFor(aElement, oldContext->GetParent(),
-                    ConsumeStyleBehavior::Consume,
                     LazyComputeBehavior::Assert);
 
   if (oldDisplay == StyleDisplay::None) {
@@ -10691,13 +10676,6 @@ nsCSSFrameConstructor::AddFCItemsForAnonymousContent(
 {
   for (uint32_t i = 0; i < aAnonymousItems.Length(); ++i) {
     nsIContent* content = aAnonymousItems[i].mContent;
-#ifdef DEBUG
-    nsIAnonymousContentCreator* creator = do_QueryFrame(aFrame);
-    NS_ASSERTION(!creator || !creator->CreateFrameFor(content),
-                 "If you need to use CreateFrameFor, you need to call "
-                 "CreateAnonymousFrames manually and not follow the standard "
-                 "ProcessChildren() codepath for this frame");
-#endif
     // Gecko-styled nodes should have no pending restyle flags.
     MOZ_ASSERT_IF(!content->IsStyledByServo(),
                   !content->IsElement() ||

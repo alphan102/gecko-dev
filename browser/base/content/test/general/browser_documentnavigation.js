@@ -48,9 +48,7 @@ function* expectFocusOnF6(backward, expectedDocument, expectedElement, onContent
         return;
       }
 
-      contentExpectedElement.addEventListener("focus", function focusReceived() {
-        contentExpectedElement.removeEventListener("focus", focusReceived, true);
-
+      contentExpectedElement.addEventListener("focus", function() {
         const contentFM = Components.classes["@mozilla.org/focus-manager;1"].
                             getService(Components.interfaces.nsIFocusManager);
         let details = contentFM.focusedWindow.document.documentElement.id;
@@ -59,7 +57,7 @@ function* expectFocusOnF6(backward, expectedDocument, expectedElement, onContent
         }
 
         sendSyncMessage("BrowserTest:FocusChanged", { details });
-      }, true);
+      }, {capture: true, once: true});
     });
   }
 
@@ -147,7 +145,7 @@ add_task(function* () {
   let sidebar = document.getElementById("sidebar");
 
   let loadPromise = BrowserTestUtils.waitForEvent(sidebar, "load", true);
-  SidebarUI.toggle('viewBookmarksSidebar');
+  SidebarUI.toggle("viewBookmarksSidebar");
   yield loadPromise;
 
 
@@ -169,7 +167,7 @@ add_task(function* () {
   yield* expectFocusOnF6(true, "main-window", gURLBar.inputField,
                                false, "back focus with sidebar urlbar");
 
-  SidebarUI.toggle('viewBookmarksSidebar');
+  SidebarUI.toggle("viewBookmarksSidebar");
 });
 
 // Navigate when the downloads panel is open

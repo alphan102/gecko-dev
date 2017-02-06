@@ -52,14 +52,14 @@ FormSubmitObserver.prototype =
     // nsIFormSubmitObserver callback about invalid forms. See HTMLFormElement
     // for details.
     Services.obs.addObserver(this, "invalidformsubmit", false);
-    this._tab.addEventListener("pageshow", this, false);
-    this._tab.addEventListener("unload", this, false);
+    this._tab.addEventListener("pageshow", this);
+    this._tab.addEventListener("unload", this);
   },
 
   uninit() {
     Services.obs.removeObserver(this, "invalidformsubmit");
-    this._content.removeEventListener("pageshow", this, false);
-    this._content.removeEventListener("unload", this, false);
+    this._content.removeEventListener("pageshow", this);
+    this._content.removeEventListener("unload", this);
     this._mm = null;
     this._element = null;
     this._content = null;
@@ -101,40 +101,48 @@ FormSubmitObserver.prototype =
       return;
     }
 
-    // Insure that this is the FormSubmitObserver associated with the
-    // element / window this notification is about.
-    let element = aInvalidElements.queryElementAt(0, Ci.nsISupports);
-    if (this._content != element.ownerGlobal.top.document.defaultView) {
-      return;
-    }
+    // Show a validation message on the first focusable element.
+    for (let i = 0; i < aInvalidElements.length; i++) {
+      // Insure that this is the FormSubmitObserver associated with the
+      // element / window this notification is about.
+      let element = aInvalidElements.queryElementAt(i, Ci.nsISupports);
+      if (this._content != element.ownerGlobal.top.document.defaultView) {
+        return;
+      }
 
-    if (!(element instanceof HTMLInputElement ||
-          element instanceof HTMLTextAreaElement ||
-          element instanceof HTMLSelectElement ||
-          element instanceof HTMLButtonElement)) {
-      return;
-    }
+      if (!(element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement ||
+            element instanceof HTMLSelectElement ||
+            element instanceof HTMLButtonElement)) {
+        continue;
+      }
 
-    // Update validation message before showing notification
-    this._validationMessage = element.validationMessage;
+      if (!Services.focus.elementIsFocusable(element, 0)) {
+        continue;
+      }
 
-    // Don't connect up to the same element more than once.
-    if (this._element == element) {
+      // Update validation message before showing notification
+      this._validationMessage = element.validationMessage;
+
+      // Don't connect up to the same element more than once.
+      if (this._element == element) {
+        this._showPopup(element);
+        break;
+      }
+      this._element = element;
+
+      element.focus();
+
+      // Watch for input changes which may change the validation message.
+      element.addEventListener("input", this);
+
+      // Watch for focus changes so we can disconnect our listeners and
+      // hide the popup.
+      element.addEventListener("blur", this);
+
       this._showPopup(element);
-      return;
+      break;
     }
-    this._element = element;
-
-    element.focus();
-
-    // Watch for input changes which may change the validation message.
-    element.addEventListener("input", this, false);
-
-    // Watch for focus changes so we can disconnect our listeners and
-    // hide the popup.
-    element.addEventListener("blur", this, false);
-
-    this._showPopup(element);
   },
 
   /*
@@ -168,8 +176,8 @@ FormSubmitObserver.prototype =
    * hide the popup.
    */
   _onBlur(aEvent) {
-    aEvent.originalTarget.removeEventListener("input", this, false);
-    aEvent.originalTarget.removeEventListener("blur", this, false);
+    aEvent.originalTarget.removeEventListener("input", this);
+    aEvent.originalTarget.removeEventListener("blur", this);
     this._element = null;
     this._hidePopup();
   },
@@ -193,13 +201,13 @@ FormSubmitObserver.prototype =
     // and where the content begin for the other elements.
     let offset = 0;
 
-    if (aElement.tagName == 'INPUT' &&
-        (aElement.type == 'radio' || aElement.type == 'checkbox')) {
+    if (aElement.tagName == "INPUT" &&
+        (aElement.type == "radio" || aElement.type == "checkbox")) {
       panelData.position = "bottomcenter topleft";
     } else {
       let win = aElement.ownerGlobal;
-      let style = win.getComputedStyle(aElement, null);
-      if (style.direction == 'rtl') {
+      let style = win.getComputedStyle(aElement);
+      if (style.direction == "rtl") {
         offset = parseInt(style.paddingRight) + parseInt(style.borderRightWidth);
       } else {
         offset = parseInt(style.paddingLeft) + parseInt(style.borderLeftWidth);

@@ -495,7 +495,9 @@
       <![CDATA[
         // Speculatively connect to the current engine's search URI (and
         // suggest URI, if different) to reduce request latency
-        this.currentEngine.speculativeConnect({window});
+        this.currentEngine.speculativeConnect({window,
+                                               originAttributes: gBrowser.contentPrincipal
+                                                                         .originAttributes});
 
         if (this._ignoreFocus) {
           // This window has been re-focused, don't show the suggestions
@@ -581,7 +583,7 @@
             pasteAndSearch.removeAttribute("disabled");
           else
             pasteAndSearch.setAttribute("disabled", "true");
-        }, false);
+        });
 
         var element, label, akey;
 
@@ -2124,7 +2126,7 @@
 
       <handler event="mousedown"><![CDATA[
         let target = event.originalTarget;
-        if (!target.classList.contains("searchbar-engine-one-off-item")) {
+        if (target.getAttribute("anonid") == "addengine-menu-button") {
           return;
         }
         // Required to receive click events from the buttons on Linux.

@@ -29,7 +29,7 @@ function copyToTemporaryFile(f) {
 function* dirIter(directory) {
   var ioSvc = Cc["@mozilla.org/network/io-service;1"].
               getService(Ci.nsIIOService);
-  var testsDir = ioSvc.newURI(directory, null, null)
+  var testsDir = ioSvc.newURI(directory)
                   .QueryInterface(Ci.nsIFileURL).file;
 
   let en = testsDir.directoryEntries;
@@ -46,7 +46,7 @@ function getParent(path) {
     if (lastSlash == -1) {
       return "";
     }
-    return '/' + path.substring(0, lastSlash).replace(/\\/g, '/');
+    return "/" + path.substring(0, lastSlash).replace(/\\/g, "/");
   }
   return path.substring(0, lastSlash);
 }
@@ -67,7 +67,7 @@ function copyDirToTempProfile(path, subdirname) {
   }
 
   // The SimpleTest directory is hidden
-  var files = Array.from(dirIter('file://' + rootDir));
+  var files = Array.from(dirIter("file://" + rootDir));
   for (f in files) {
     files[f].copyTo(tmpdir, "");
   }
@@ -77,7 +77,7 @@ function copyDirToTempProfile(path, subdirname) {
 
 function convertChromeURI(chromeURI) {
   let uri = Cc["@mozilla.org/network/io-service;1"].
-    getService(Ci.nsIIOService).newURI(chromeURI, null, null);
+    getService(Ci.nsIIOService).newURI(chromeURI);
   return gChromeReg.convertChromeURL(uri);
 }
 
@@ -85,8 +85,8 @@ function chromeURIToFile(chromeURI) {
   var jar = getJar(chromeURI);
   if (jar) {
     var tmpDir = extractJarToTmp(jar);
-    let parts = chromeURI.split('/');
-    if (parts[parts.length - 1] != '') {
+    let parts = chromeURI.split("/");
+    if (parts[parts.length - 1] != "") {
       tmpDir.append(parts[parts.length - 1]);
     }
     return tmpDir;

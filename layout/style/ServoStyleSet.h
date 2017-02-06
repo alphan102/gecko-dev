@@ -26,10 +26,12 @@ class Element;
 class CSSStyleSheet;
 class ServoRestyleManager;
 class ServoStyleSheet;
+struct Keyframe;
 } // namespace mozilla
 class nsIDocument;
 class nsStyleContext;
 class nsPresContext;
+struct nsTimingFunction;
 struct TreeMatchContext;
 
 namespace mozilla {
@@ -57,13 +59,11 @@ public:
   already_AddRefed<nsStyleContext>
   ResolveStyleFor(dom::Element* aElement,
                   nsStyleContext* aParentContext,
-                  ConsumeStyleBehavior aConsume,
                   LazyComputeBehavior aMayCompute);
 
   already_AddRefed<nsStyleContext>
   ResolveStyleFor(dom::Element* aElement,
                   nsStyleContext* aParentContext,
-                  ConsumeStyleBehavior aConsume,
                   LazyComputeBehavior aMayCompute,
                   TreeMatchContext& aTreeMatchContext);
 
@@ -163,17 +163,16 @@ public:
 #endif
 
   /**
-   * Recompute our default computed styles.  This will eagerly create a new set
-   * of default computed style structs.
+   * Rebuild the style data. This will force a stylesheet flush, and also
+   * recompute the default computed styles.
    */
-  void RecomputeDefaultComputedStyles();
+  void RebuildData();
 
   /**
    * Resolve style for the given element, and return it as a
    * ServoComputedValues, not an nsStyleContext.
    */
-  already_AddRefed<ServoComputedValues>
-    ResolveServoStyle(dom::Element* aElement, ConsumeStyleBehavior aConsume);
+  already_AddRefed<ServoComputedValues> ResolveServoStyle(dom::Element* aElement);
 
   /**
    * Restyle with added declaration, for use in animations.
@@ -182,18 +181,37 @@ public:
     RawServoDeclarationBlock* aDeclarations,
     const ServoComputedValues* aPreviousStyle);
 
+  bool FillKeyframesForName(const nsString& aName,
+                            const nsTimingFunction& aTimingFunction,
+                            const ServoComputedValues* aComputedValues,
+                            nsTArray<Keyframe>& aKeyframes);
+
 private:
   already_AddRefed<nsStyleContext> GetContext(already_AddRefed<ServoComputedValues>,
                                               nsStyleContext* aParentContext,
                                               nsIAtom* aPseudoTag,
-                                              CSSPseudoElementType aPseudoType);
+                                              CSSPseudoElementType aPseudoType,
+                                              dom::Element* aElementForAnimation);
 
   already_AddRefed<nsStyleContext> GetContext(nsIContent* aContent,
                                               nsStyleContext* aParentContext,
                                               nsIAtom* aPseudoTag,
                                               CSSPseudoElementType aPseudoType,
-                                              ConsumeStyleBehavior aConsume,
                                               LazyComputeBehavior aMayCompute);
+
+  /**
+   * Resolve all ServoDeclarationBlocks attached to mapped
+   * presentation attributes cached on the document.
+   * Call this before jumping into Servo's style system.
+   */
+  void ResolveMappedAttrDeclarationBlocks();
+
+  /**
+   * Perform all lazy operations required before traversing
+   * a subtree.
+   */
+  void PrepareAndTraverseSubtree(RawGeckoElementBorrowed aRoot,
+                                 mozilla::TraversalRootBehavior aRootBehavior);
 
   nsPresContext* mPresContext;
   UniquePtr<RawServoStyleSet> mRawSet;

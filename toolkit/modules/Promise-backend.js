@@ -39,6 +39,11 @@
 // that Components is not defined in worker threads, so no instance of Cu can
 // be obtained.
 
+// As this can be loaded in several ways, allow require and module to be defined.
+/* global module:false require:false */
+// This is allowed in workers.
+/* global setImmediate:false */
+
 var Cu = this.require ? require("chrome").Cu : Components.utils;
 var Cc = this.require ? require("chrome").Cc : Components.classes;
 var Ci = this.require ? require("chrome").Ci : Components.interfaces;
@@ -291,7 +296,7 @@ PendingErrors.addObserver(function(details) {
     " Did you forget to '.catch', or did you forget to 'return'?\nSee" +
     " https://developer.mozilla.org/Mozilla/JavaScript_code_modules/Promise.jsm/Promise\n\n";
 
-  let error = Cc['@mozilla.org/scripterror;1'].createInstance(Ci.nsIScriptError);
+  let error = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
   if (!error || !Services.console) {
     // Too late during shutdown to use the nsIConsole
     dump("*************************\n");

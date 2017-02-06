@@ -8,30 +8,26 @@
 #include "mozilla/dom/TabGroup.h"
 #include "mozilla/Telemetry.h"
 #include "nsIDocShell.h"
-#include "nsIEffectiveTLDService.h"
-#include "nsIURI.h"
 
 namespace mozilla {
 namespace dom {
 
-/* static */ void
+/* static */ nsresult
 DocGroup::GetKey(nsIPrincipal* aPrincipal, nsACString& aKey)
 {
-  aKey.Truncate();
-  nsCOMPtr<nsIURI> uri;
-  nsresult rv = aPrincipal->GetURI(getter_AddRefs(uri));
-  // GetBaseDomain works fine if |uri| is null, but it outputs a warning
-  // which ends up cluttering the logs.
-  if (NS_SUCCEEDED(rv) && uri) {
-    nsCOMPtr<nsIEffectiveTLDService> tldService =
-      do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
-    if (tldService) {
-      rv = tldService->GetBaseDomain(uri, 0, aKey);
-      if (NS_FAILED(rv)) {
-        aKey.Truncate();
-      }
-    }
+  // Use GetBaseDomain() to handle things like file URIs, IP address URIs,
+  // etc. correctly.
+  nsresult rv = aPrincipal->GetBaseDomain(aKey);
+  if (NS_FAILED(rv)) {
+    // We don't really know what to do here.  But we should be conservative,
+    // otherwise it would be possible to reorder two events incorrectly in the
+    // future if we interrupt at the DocGroup level, so to be safe, use an
+    // empty string to classify all such documents as belonging to the same
+    // DocGroup.
+    aKey.Truncate();
   }
+
+  return rv;
 }
 
 void
@@ -67,6 +63,13 @@ nsIEventTarget*
 DocGroup::EventTargetFor(TaskCategory aCategory) const
 {
   return mTabGroup->EventTargetFor(aCategory);
+}
+
+AbstractThread*
+DocGroup::AbstractMainThreadFor(TaskCategory aCategory)
+{
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
+  return mTabGroup->AbstractMainThreadFor(aCategory);
 }
 
 }

@@ -13,7 +13,7 @@
 
 #define FOR_EACH_COMMON_PROPERTYNAME(macro) \
     macro(add, add, "add") \
-    macro(allowContentSpread, allowContentSpread, "allowContentSpread") \
+    macro(allowContentIter, allowContentIter, "allowContentIter") \
     macro(anonymous, anonymous, "anonymous") \
     macro(Any, Any, "Any") \
     macro(apply, apply, "apply") \
@@ -21,6 +21,7 @@
     macro(ArrayBufferSpecies, ArrayBufferSpecies, "ArrayBufferSpecies") \
     macro(ArrayIterator, ArrayIterator, "Array Iterator") \
     macro(ArrayIteratorNext, ArrayIteratorNext, "ArrayIteratorNext") \
+    macro(ArraySort, ArraySort, "ArraySort") \
     macro(ArraySpecies, ArraySpecies, "ArraySpecies") \
     macro(ArraySpeciesCreate, ArraySpeciesCreate, "ArraySpeciesCreate") \
     macro(ArrayToLocaleString, ArrayToLocaleString, "ArrayToLocaleString") \
@@ -242,6 +243,7 @@
     macro(other, other, "other") \
     macro(outOfMemory, outOfMemory, "out of memory") \
     macro(ownKeys, ownKeys, "ownKeys") \
+    macro(Object_valueOf, Object_valueOf, "Object_valueOf") \
     macro(parseFloat, parseFloat, "parseFloat") \
     macro(parseInt, parseInt, "parseInt") \
     macro(pattern, pattern, "pattern") \
@@ -344,6 +346,7 @@
     macro(variable, variable, "variable") \
     macro(void0, void0, "(void 0)") \
     macro(wasm, wasm, "wasm") \
+    macro(wasmcall, wasmcall, "wasmcall") \
     macro(watch, watch, "watch") \
     macro(WeakMapConstructorInit, WeakMapConstructorInit, "WeakMapConstructorInit") \
     macro(WeakSetConstructorInit, WeakSetConstructorInit, "WeakSetConstructorInit") \

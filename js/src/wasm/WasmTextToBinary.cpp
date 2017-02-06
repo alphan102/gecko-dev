@@ -1619,6 +1619,8 @@ ParseBlock(WasmParseContext& c, Op op, bool inParens)
     }
 
     AstBlock* result = new(c.lifo) AstBlock(op, type, name, Move(exprs));
+    if (!result)
+        return nullptr;
 
     if (op == Op::Loop && !otherName.empty()) {
         if (!exprs.append(result))
@@ -4437,7 +4439,7 @@ static bool
 EncodeGlobalType(Encoder& e, const AstGlobal* global)
 {
     return e.writeValType(global->type()) &&
-           e.writeVarU32(global->isMutable() ? uint32_t(GlobalFlags::IsMutable) : 0);
+           e.writeVarU32(global->isMutable() ? uint32_t(GlobalTypeImmediate::IsMutable) : 0);
 }
 
 static bool

@@ -30,7 +30,7 @@ module.exports = {
     "uneval": true,
     "URL": true,
     "WebSocket": true,
-    "XMLHttpRequest": true,
+    "XMLHttpRequest": true
   },
   "rules": {
     // These are the rules that have been configured so far to match the
@@ -56,8 +56,7 @@ module.exports = {
     "react/no-direct-mutation-state": "error",
     "react/no-unknown-property": "error",
     "react/prefer-es6-class": ["warn", "never"],
-    // Disabled temporarily until errors are fixed.
-    "react/prop-types": "off",
+    "react/prop-types": "error",
     "react/sort-comp": ["error", {
       order: [
         "lifecycle",
@@ -283,6 +282,8 @@ module.exports = {
     "no-return-assign": "error",
     // Allow use of javascript: urls.
     "no-script-url": "off",
+    // Disallow assignments like foo = foo
+    "no-self-assign": "error",
     // Disallow comparisons where both sides are exactly the same.
     "no-self-compare": "error",
     // Disallow use of comma operator.
@@ -332,6 +333,10 @@ module.exports = {
     "no-unsafe-finally": "error",
     // Allow using variables before they are defined.
     "no-use-before-define": "off",
+    // Disallow useless Function.prototype.{call/apply}
+    "no-useless-call": "error",
+    // Disallow useless return;
+    "no-useless-return": "error",
     // We use var-only-at-top-level instead of no-var as we allow top level
     // vars.
     "no-var": "off",

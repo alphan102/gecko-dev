@@ -559,7 +559,7 @@ var AddonTestUtils = {
 
         // Force the XPIProvider provider to reload to better
         // simulate real-world usage.
-        let XPIscope = Cu.import("resource://gre/modules/addons/XPIProvider.jsm");
+        let XPIscope = Cu.import("resource://gre/modules/addons/XPIProvider.jsm", {});
         // This would be cleaner if I could get it as the rejection reason from
         // the AddonManagerInternal.shutdown() promise
         let shutdownError = XPIscope.XPIProvider._shutdownError;
@@ -608,7 +608,7 @@ var AddonTestUtils = {
       rdf += escaped`  <Description about="urn:mozilla:extension:${addon}"><em:updates><Seq>\n`;
 
       for (let versionData of data[addon]) {
-        rdf += '    <li><Description>\n';
+        rdf += "    <li><Description>\n";
         rdf += this._writeProps(versionData, ["version", "multiprocessCompatible"],
                                 `      `);
         for (let app of versionData.targetApplications || []) {
@@ -617,9 +617,9 @@ var AddonTestUtils = {
                                   `        `);
           rdf += "      </Description></em:targetApplication>\n";
         }
-        rdf += '    </Description></li>\n';
+        rdf += "    </Description></li>\n";
       }
-      rdf += '  </Seq></em:updates></Description>\n';
+      rdf += "  </Seq></em:updates></Description>\n";
     }
     rdf += "</RDF>\n";
 

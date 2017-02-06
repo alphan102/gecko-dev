@@ -425,7 +425,7 @@ action.InputState = {};
 /**
  * Input state associated with a keyboard-type device.
  */
-action.InputState.Key = class extends InputState {
+action.InputState.Key = class Key extends InputState {
   constructor() {
     super();
     this.pressed = new Set();
@@ -498,7 +498,7 @@ action.InputState.Key = class extends InputState {
 /**
  * Input state not associated with a specific physical device.
  */
-action.InputState.Null = class extends InputState {
+action.InputState.Null = class Null extends InputState {
   constructor() {
     super();
     this.type = "none";
@@ -513,7 +513,7 @@ action.InputState.Null = class extends InputState {
  * @param {boolean} primary
  *     Whether the pointing device is primary.
  */
-action.InputState.Pointer = class extends InputState {
+action.InputState.Pointer = class Pointer extends InputState {
   constructor(subtype, primary) {
     super();
     this.pressed = new Set();
@@ -672,7 +672,7 @@ action.Chain = class extends Array {
    */
   static fromJson(actions) {
     assert.array(actions,
-              error.pprint`Expected 'actions' to be an Array, got: ${actions}`);
+        error.pprint`Expected 'actions' to be an Array, got: ${actions}`);
     let actionsByTick = new action.Chain();
     //  TODO check that each actionSequence in actions refers to a different input ID
     for (let actionSequence of actions) {
@@ -1012,10 +1012,10 @@ function dispatchKeyUp(a, inputState, win) {
  *     Promise that is resolved after the specified time interval.
  */
 function dispatchPause(a, tickDuration) {
-  const TIMER = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   let duration = typeof a.duration == "undefined" ? tickDuration : a.duration;
   return new Promise(resolve =>
-      TIMER.initWithCallback(resolve, duration, Ci.nsITimer.TYPE_ONE_SHOT)
+      timer.initWithCallback(resolve, duration, Ci.nsITimer.TYPE_ONE_SHOT)
   );
 }
 

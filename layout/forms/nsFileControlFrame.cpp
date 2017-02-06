@@ -206,15 +206,14 @@ AppendBlobImplAsDirectory(nsTArray<OwningFileOrDirectory>& aArray,
 
   nsAutoString fullpath;
   ErrorResult err;
-  aBlobImpl->GetMozFullPath(fullpath, err);
+  aBlobImpl->GetMozFullPath(fullpath, SystemCallerGuarantee(), err);
   if (err.Failed()) {
     err.SuppressException();
     return;
   }
 
   nsCOMPtr<nsIFile> file;
-  NS_ConvertUTF16toUTF8 path(fullpath);
-  nsresult rv = NS_NewNativeLocalFile(path, true, getter_AddRefs(file));
+  nsresult rv = NS_NewLocalFile(fullpath, true, getter_AddRefs(file));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }

@@ -97,7 +97,7 @@ DistributionCustomizer.prototype = {
   },
 
   _makeURI: function DIST__makeURI(spec) {
-    return this._ioSvc.newURI(spec, null, null);
+    return this._ioSvc.newURI(spec);
   },
 
   _parseBookmarksSection: Task.async(function* (parentGuid, section) {
@@ -436,8 +436,8 @@ DistributionCustomizer.prototype = {
             value = value.replace(/%LOCALE%/g, this._locale);
             value = value.replace(/%LANGUAGE%/g, this._language);
             localizedStr.data = "data:text/plain," + key + "=" + value;
+            defaults._prefBranch.setComplexValue(key, Ci.nsIPrefLocalizedString, localizedStr);
           }
-          defaults._prefBranch.setComplexValue(key, Ci.nsIPrefLocalizedString, localizedStr);
         } catch (e) { /* ignore bad prefs and move on */ }
       }
     }

@@ -19,6 +19,7 @@
 #ifndef wasm_types_h
 #define wasm_types_h
 
+#include "mozilla/Alignment.h"
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/Maybe.h"
@@ -92,6 +93,7 @@ typedef float F32x4[4];
 
 class Code;
 class CodeRange;
+class GlobalSegment;
 class Memory;
 class Module;
 class Instance;
@@ -890,14 +892,17 @@ struct TrapOffset
 
 class CallSiteDesc
 {
-    uint32_t lineOrBytecode_ : 30;
-    uint32_t kind_ : 2;
+    uint32_t lineOrBytecode_ : 29;
+    uint32_t kind_ : 3;
   public:
     enum Kind {
         Func,      // pc-relative call to a specific function
         Dynamic,   // dynamic callee called via register
         Symbolic,  // call to a single symbolic callee
-        TrapExit   // call to a trap exit
+        TrapExit,   // call to a trap exit
+        EnterFrame, // call to a enter frame handler
+        LeaveFrame, // call to a leave frame handler
+        Breakpoint  // call to instruction breakpoint
     };
     CallSiteDesc() {}
     explicit CallSiteDesc(Kind kind)
@@ -1014,6 +1019,8 @@ enum class SymbolicAddress
     InterruptUint32,
     ReportOverRecursed,
     HandleExecutionInterrupt,
+    HandleDebugTrap,
+    HandleThrow,
     ReportTrap,
     ReportOutOfBounds,
     ReportUnalignedAccess,
@@ -1037,7 +1044,7 @@ enum class SymbolicAddress
 };
 
 void*
-AddressOf(SymbolicAddress imm, ExclusiveContext* cx);
+AddressOf(SymbolicAddress imm, JSContext* cx);
 
 // Assumptions captures ambient state that must be the same when compiling and
 // deserializing a module for the compiled code to be valid. If it's not, then
@@ -1053,7 +1060,7 @@ struct Assumptions
     // If Assumptions is constructed without arguments, initBuildIdFromContext()
     // must be called to complete initialization.
     Assumptions();
-    bool initBuildIdFromContext(ExclusiveContext* cx);
+    bool initBuildIdFromContext(JSContext* cx);
 
     bool clone(const Assumptions& other);
 
@@ -1149,7 +1156,15 @@ struct TlsData
     // stack pointer in the prologue of functions that allocate stack space. See
     // `CodeGenerator::generateWasm`.
     void* stackLimit;
+
+    // The globalArea must be the last field.  Globals for the module start here
+    // and are inline in this structure.  16-byte alignment is required for SIMD
+    // data.
+    MOZ_ALIGNED_DECL(char globalArea, 16);
+
 };
+
+static_assert(offsetof(TlsData, globalArea) % 16 == 0, "aligned");
 
 typedef int32_t (*ExportFuncPtr)(ExportArg* args, TlsData* tls);
 
@@ -1489,6 +1504,28 @@ struct MemoryPatch
 };
 
 WASM_DECLARE_POD_VECTOR(MemoryPatch, MemoryPatchVector)
+
+// As an invariant across architectures, within wasm code:
+//   $sp % WasmStackAlignment = (sizeof(wasm::Frame) + masm.framePushed) % WasmStackAlignment
+// Thus, wasm::Frame represents the bytes pushed after the call (which occurred
+// with a WasmStackAlignment-aligned StackPointer) that are not included in
+// masm.framePushed.
+
+struct Frame
+{
+    // The caller's saved frame pointer. In non-profiling mode, internal
+    // wasm-to-wasm calls don't update fp and thus don't save the caller's
+    // frame pointer; the space is reserved, however, so that profiling mode can
+    // reuse the same function body without recompiling.
+    uint8_t* callerFP;
+
+    // The return address pushed by the call (in the case of ARM/MIPS the return
+    // address is pushed by the first instruction of the prologue).
+    void* returnAddress;
+};
+
+static_assert(sizeof(Frame) == 2 * sizeof(void*), "?!");
+static const uint32_t FrameBytesAfterReturnAddress = sizeof(void*);
 
 } // namespace wasm
 } // namespace js

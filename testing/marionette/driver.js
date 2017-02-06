@@ -162,6 +162,67 @@ Object.defineProperty(GeckoDriver.prototype, "a11yChecks", {
   }
 });
 
+Object.defineProperty(GeckoDriver.prototype, "proxy", {
+  get: function () {
+    return this.capabilities.get("proxy");
+  }
+});
+
+Object.defineProperty(GeckoDriver.prototype, "secureTLS", {
+  get: function () {
+    return !this.capabilities.get("acceptInsecureCerts");
+  }
+});
+
+Object.defineProperty(GeckoDriver.prototype, "timeouts", {
+  get: function () {
+    return this.capabilities.get("timeouts");
+  },
+
+  set: function (newTimeouts) {
+    this.capabilities.set("timeouts", newTimeouts);
+  },
+});
+
+Object.defineProperty(GeckoDriver.prototype, "windowHandles", {
+  get: function () {
+    let hs = [];
+    let winEn = Services.wm.getEnumerator(null);
+
+    while (winEn.hasMoreElements()) {
+      let win = winEn.getNext();
+      let tabBrowser = browser.getTabBrowser(win);
+
+      if (tabBrowser) {
+        tabBrowser.tabs.forEach(tab => {
+          let winId = this.getIdForBrowser(browser.getBrowserForTab(tab));
+          if (winId !== null) {
+            hs.push(winId);
+          }
+        });
+      } else {
+        // For other chrome windows beside the browser window, only add the window itself.
+        hs.push(getOuterWindowId(win));
+      }
+    }
+
+    return hs;
+  },
+});
+
+Object.defineProperty(GeckoDriver.prototype, "chromeWindowHandles", {
+  get : function () {
+    let hs = [];
+    let winEn = Services.wm.getEnumerator(null);
+
+    while (winEn.hasMoreElements()) {
+      hs.push(getOuterWindowId(winEn.getNext()));
+    }
+
+    return hs;
+  },
+});
+
 GeckoDriver.prototype.QueryInterface = XPCOMUtils.generateQI([
   Ci.nsIMessageListener,
   Ci.nsIObserver,
@@ -291,9 +352,8 @@ GeckoDriver.prototype.addFrameCloseListener = function (action) {
  */
 GeckoDriver.prototype.addBrowser = function (win) {
   let bc = new browser.Context(win, this);
-  let winId = win.QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsIDOMWindowUtils).outerWindowID;
-  winId = winId + ((this.appName == "B2G") ? "-b2g" : "");
+  let winId = getOuterWindowId(win);
+
   this.browsers[winId] = bc;
   this.curBrowser = this.browsers[winId];
   if (!this.wins.has(winId)) {
@@ -455,7 +515,7 @@ GeckoDriver.prototype.registerBrowser = function (id, be) {
   return [reg, mainContent, this.capabilities.toJSON()];
 };
 
-GeckoDriver.prototype.registerPromise = function() {
+GeckoDriver.prototype.registerPromise = function () {
   const li = "Marionette:register";
 
   return new Promise(resolve => {
@@ -480,7 +540,7 @@ GeckoDriver.prototype.registerPromise = function() {
   });
 };
 
-GeckoDriver.prototype.listeningPromise = function() {
+GeckoDriver.prototype.listeningPromise = function () {
   const li = "Marionette:listenersAttached";
   return new Promise(resolve => {
     let cb = () => {
@@ -491,30 +551,8 @@ GeckoDriver.prototype.listeningPromise = function() {
   });
 };
 
-Object.defineProperty(GeckoDriver.prototype, "timeouts", {
-  get: function () {
-    return this.capabilities.get("timeouts");
-  },
-
-  set: function (newTimeouts) {
-    this.capabilities.set("timeouts", newTimeouts);
-  },
-});
-
-Object.defineProperty(GeckoDriver.prototype, "secureTLS", {
-  get: function () {
-    return !this.capabilities.get("acceptInsecureCerts");
-  }
-});
-
-Object.defineProperty(GeckoDriver.prototype, "proxy", {
-  get: function () {
-    return this.capabilities.get("proxy");
-  }
-});
-
 /** Create a new session. */
-GeckoDriver.prototype.newSession = function*(cmd, resp) {
+GeckoDriver.prototype.newSession = function* (cmd, resp) {
   if (this.sessionId) {
     throw new SessionNotCreatedError("Maximum number of active sessions");
   }
@@ -610,7 +648,9 @@ GeckoDriver.prototype.newSession = function*(cmd, resp) {
   yield registerBrowsers;
   yield browserListening;
 
-  this.curBrowser.browserForTab.focus();
+  if (this.curBrowser.tab) {
+    browser.getBrowserForTab(this.curBrowser.tab).focus();
+  }
 
   return {
     sessionId: this.sessionId,
@@ -769,7 +809,7 @@ GeckoDriver.prototype.executeScript = function*(cmd, resp) {
  * @param {string=} sandbox
  *     Name of the sandbox to evaluate the script in.  The sandbox is
  *     cached for later re-use on the same Window object if
- *     {@code newSandbox} is false.  If he parameter is undefined,
+ *     {@code newSandbox} is false.  If the parameter is undefined,
  *     the script is evaluated in a mutable sandbox.  If the parameter
  *     is "system", it will be evaluted in a sandbox with elevated system
  *     privileges, equivalent to chrome space.
@@ -927,7 +967,7 @@ GeckoDriver.prototype.get = function*(cmd, resp) {
   });
 
   yield get;
-  this.curBrowser.browserForTab.focus();
+  browser.getBrowserForTab(this.curBrowser.tab).focus();
 };
 
 /**
@@ -1008,6 +1048,36 @@ GeckoDriver.prototype.refresh = function*(cmd, resp) {
 };
 
 /**
+ * Forces an update for the given browser's id.
+ */
+GeckoDriver.prototype.updateIdForBrowser = function (browser, newId) {
+  this._browserIds.set(browser.permanentKey, newId);
+};
+
+/**
+ * Retrieves a listener id for the given xul browser element. In case
+ * the browser is not known, an attempt is made to retrieve the id from
+ * a CPOW, and null is returned if this fails.
+ */
+GeckoDriver.prototype.getIdForBrowser = function (browser) {
+  if (browser === null) {
+    return null;
+  }
+  let permKey = browser.permanentKey;
+  if (this._browserIds.has(permKey)) {
+    return this._browserIds.get(permKey);
+  }
+
+  let winId = browser.outerWindowID;
+  if (winId) {
+    winId = winId.toString();
+    this._browserIds.set(permKey, winId);
+    return winId;
+  }
+  return null;
+},
+
+/**
  * Get the current window's handle. On desktop this typically corresponds
  * to the currently selected tab.
  *
@@ -1020,7 +1090,7 @@ GeckoDriver.prototype.refresh = function*(cmd, resp) {
  */
 GeckoDriver.prototype.getWindowHandle = function (cmd, resp) {
   // curFrameId always holds the current tab.
-  if (this.curBrowser.curFrameId && this.appName != "B2G") {
+  if (this.curBrowser.curFrameId) {
     resp.body.value = this.curBrowser.curFrameId;
     return;
   }
@@ -1034,38 +1104,9 @@ GeckoDriver.prototype.getWindowHandle = function (cmd, resp) {
 };
 
 /**
- * Forces an update for the given browser's id.
- */
-GeckoDriver.prototype.updateIdForBrowser = function (browser, newId) {
-  this._browserIds.set(browser.permanentKey, newId);
-};
-
-/**
- * Retrieves a listener id for the given xul browser element. In case
- * the browser is not known, an attempt is made to retrieve the id from
- * a CPOW, and null is returned if this fails.
- */
-GeckoDriver.prototype.getIdForBrowser = function getIdForBrowser(browser) {
-  if (browser === null) {
-    return null;
-  }
-  let permKey = browser.permanentKey;
-  if (this._browserIds.has(permKey)) {
-    return this._browserIds.get(permKey);
-  }
-
-  let winId = browser.outerWindowID;
-  if (winId) {
-    winId += "";
-    this._browserIds.set(permKey, winId);
-    return winId;
-  }
-  return null;
-},
-
-/**
- * Get a list of top-level browsing contexts.  On desktop this typically
- * corresponds to the set of open tabs.
+ * Get a list of top-level browsing contexts. On desktop this typically
+ * corresponds to the set of open tabs for browser windows, or the window itself
+ * for non-browser chrome windows.
  *
  * Each window handle is assigned by the server and is guaranteed unique,
  * however the return array does not have a specified ordering.
@@ -1074,29 +1115,8 @@ GeckoDriver.prototype.getIdForBrowser = function getIdForBrowser(browser) {
  *     Unique window handles.
  */
 GeckoDriver.prototype.getWindowHandles = function (cmd, resp) {
-  let hs = [];
-  let winEn = Services.wm.getEnumerator(null);
-  while (winEn.hasMoreElements()) {
-    let win = winEn.getNext();
-    if (win.gBrowser && this.appName != "B2G") {
-      let tabbrowser = win.gBrowser;
-      for (let i = 0; i < tabbrowser.browsers.length; ++i) {
-        let winId = this.getIdForBrowser(tabbrowser.getBrowserAtIndex(i));
-        if (winId !== null) {
-          hs.push(winId);
-        }
-      }
-    } else {
-      // XUL Windows, at least, do not have gBrowser
-      let winId = win.QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsIDOMWindowUtils)
-          .outerWindowID;
-      winId += (this.appName == "B2G") ? "-b2g" : "";
-      hs.push(winId);
-    }
-  }
-  resp.body = hs;
-};
+  return this.windowHandles;
+}
 
 /**
  * Get the current window's handle.  This corresponds to a window that
@@ -1126,18 +1146,8 @@ GeckoDriver.prototype.getChromeWindowHandle = function (cmd, resp) {
  *     Unique window handles.
  */
 GeckoDriver.prototype.getChromeWindowHandles = function (cmd, resp) {
-  let hs = [];
-  let winEn = Services.wm.getEnumerator(null);
-  while (winEn.hasMoreElements()) {
-    let foundWin = winEn.getNext();
-    let winId = foundWin.QueryInterface(Ci.nsIInterfaceRequestor)
-        .getInterface(Ci.nsIDOMWindowUtils)
-        .outerWindowID;
-    winId = winId + ((this.appName == "B2G") ? "-b2g" : "");
-    hs.push(winId);
-  }
-  resp.body = hs;
-};
+  return this.chromeWindowHandles;
+}
 
 /**
  * Get the current window position.
@@ -1181,18 +1191,14 @@ GeckoDriver.prototype.setWindowPosition = function (cmd, resp) {
  *
  * @param {string} name
  *     Target name or ID of the window to switch to.
+ * @param {boolean=} focus
+ *      A boolean value which determines whether to focus
+ *      the window. Defaults to true.
  */
 GeckoDriver.prototype.switchToWindow = function* (cmd, resp) {
   let switchTo = cmd.parameters.name;
-  let isMobile = this.appName == "Fennec";
+  let focus = (cmd.parameters.focus !== undefined) ? cmd.parameters.focus : true;
   let found;
-
-  let getOuterWindowId = function (win) {
-    let rv = win.QueryInterface(Ci.nsIInterfaceRequestor)
-        .getInterface(Ci.nsIDOMWindowUtils)
-        .outerWindowID;
-    return rv;
-  };
 
   let byNameOrId = function (name, outerId, contentWindowId) {
     return switchTo == name ||
@@ -1204,12 +1210,13 @@ GeckoDriver.prototype.switchToWindow = function* (cmd, resp) {
   while (winEn.hasMoreElements()) {
     let win = winEn.getNext();
     let outerId = getOuterWindowId(win);
+    let tabbrowser = browser.getTabBrowser(win);
 
-    if (win.gBrowser && !isMobile) {
-      let tabbrowser = win.gBrowser;
-      for (let i = 0; i < tabbrowser.browsers.length; ++i) {
-        let browser = tabbrowser.getBrowserAtIndex(i);
-        let contentWindowId = this.getIdForBrowser(browser);
+    if (tabbrowser) {
+      for (let i = 0; i < tabbrowser.tabs.length; ++i) {
+        let contentBrowser = browser.getBrowserForTab(tabbrowser.tabs[i]);
+        let contentWindowId = this.getIdForBrowser(contentBrowser);
+
         if (byNameOrId(win.name, contentWindowId, outerId)) {
           found = {
             win: win,
@@ -1248,7 +1255,7 @@ GeckoDriver.prototype.switchToWindow = function* (cmd, resp) {
       this.curBrowser = this.browsers[found.outerId];
 
       if ("tabIndex" in found) {
-        this.curBrowser.switchToTab(found.tabIndex, found.win);
+        this.curBrowser.switchToTab(found.tabIndex, found.win, focus);
       }
     }
   } else {
@@ -1851,7 +1858,7 @@ GeckoDriver.prototype.getElementValueOfCssProperty = function*(cmd, resp) {
     case Context.CHROME:
       let win = this.getCurrentWindow();
       let el = this.curBrowser.seenEls.get(id, {frame: win});
-      let sty = win.document.defaultView.getComputedStyle(el, null);
+      let sty = win.document.defaultView.getComputedStyle(el);
       resp.body.value = sty.getPropertyValue(prop);
       break;
 
@@ -2081,86 +2088,83 @@ GeckoDriver.prototype.deleteCookie = function*(cmd, resp) {
 };
 
 /**
- * Close the current window, ending the session if it's the last
- * window currently open.
+ * Close the currently selected tab/window.
  *
- * On B2G this method is a noop and will return immediately.
+ * With multiple open tabs present the currently selected tab will be closed.
+ * Otherwise the window itself will be closed. If it is the last window
+ * currently open, the window will not be closed to prevent a shutdown of the
+ * application. Instead the returned list of window handles is empty.
+ *
+ * @return {Array.<string>}
+ *     Unique window handles of remaining windows.
  */
 GeckoDriver.prototype.close = function (cmd, resp) {
-  // can't close windows on B2G
-  if (this.appName == "B2G") {
-    return;
-  }
-
   let nwins = 0;
   let winEn = Services.wm.getEnumerator(null);
+
   while (winEn.hasMoreElements()) {
     let win = winEn.getNext();
 
-    // count both windows and tabs
-    if (win.gBrowser) {
-      nwins += win.gBrowser.browsers.length;
+    // For browser windows count the tabs. Otherwise take the window itself.
+    let tabbrowser = browser.getTabBrowser(win);
+    if (tabbrowser) {
+      nwins += tabbrowser.tabs.length;
     } else {
       nwins++;
     }
   }
 
-  // if there is only 1 window left, delete the session
+  // If there is only 1 window left, do not close it. Instead return a faked
+  // empty array of window handles. This will instruct geckodriver to terminate
+  // the application.
   if (nwins == 1) {
-    this.sessionTearDown();
-    return;
+    return [];
   }
 
-  try {
-    if (this.mm != globalMessageManager) {
-      this.mm.removeDelayedFrameScript(FRAME_SCRIPT);
-    }
-
-    if (this.curBrowser.tab) {
-      this.curBrowser.closeTab();
-    } else {
-      this.getCurrentWindow().close();
-    }
-  } catch (e) {
-    throw new UnknownError(`Could not close window: ${e.message}`);
+  if (this.mm != globalMessageManager) {
+    this.mm.removeDelayedFrameScript(FRAME_SCRIPT);
   }
+
+  return this.curBrowser.closeTab().then(() => this.windowHandles);
 };
 
 /**
- * Close the currently selected chrome window, ending the session if it's the last
- * window currently open.
+ * Close the currently selected chrome window.
  *
- * On B2G this method is a noop and will return immediately.
+ * If it is the last window currently open, the chrome window will not be
+ * closed to prevent a shutdown of the application. Instead the returned
+ * list of chrome window handles is empty.
+ *
+ * @return {Array.<string>}
+ *     Unique chrome window handles of remaining chrome windows.
  */
 GeckoDriver.prototype.closeChromeWindow = function (cmd, resp) {
-  // can't close windows on B2G
-  if (this.appName == "B2G") {
-    return;
-  }
+  assert.firefox();
 
   // Get the total number of windows
   let nwins = 0;
   let winEn = Services.wm.getEnumerator(null);
+
   while (winEn.hasMoreElements()) {
     nwins++;
     winEn.getNext();
   }
 
-  // if there is only 1 window left, delete the session
+  // If there is only 1 window left, do not close it. Instead return a faked
+  // empty array of window handles. This will instruct geckodriver to terminate
+  // the application.
   if (nwins == 1) {
-    this.sessionTearDown();
-    return;
+    return [];
   }
 
-  try {
-    // reset frame to the top-most frame
-    this.curFrame = null;
+  // reset frame to the top-most frame
+  this.curFrame = null;
 
+  if (this.mm != globalMessageManager) {
     this.mm.removeDelayedFrameScript(FRAME_SCRIPT);
-    this.getCurrentWindow().close();
-  } catch (e) {
-    throw new UnknownError(`Could not close window: ${e.message}`);
   }
+
+  return this.curBrowser.closeWindow().then(() => this.chromeWindowHandles);
 };
 
 /**
@@ -2840,4 +2844,21 @@ function copy (obj) {
     return Object.assign({}, obj);
   }
   return obj;
+}
+
+/**
+ * Get the outer window ID for the specified window.
+ *
+ * @param {nsIDOMWindow} win
+ *     Window whose browser we need to access.
+ *
+ * @return {string}
+ *     Returns the unique window ID.
+ */
+function getOuterWindowId(win) {
+  let id = win.QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsIDOMWindowUtils)
+      .outerWindowID;
+
+  return id.toString();
 }

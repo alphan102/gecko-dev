@@ -20,6 +20,7 @@
 
 #include "mozilla/DebugOnly.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/ScopeExit.h"
 
 #include "jit/AtomicOperations.h"
 #include "jit/Disassembler.h"
@@ -47,11 +48,10 @@ extern "C" MFBT_API bool IsSignalHandlingBroken();
 static JSRuntime*
 RuntimeForCurrentThread()
 {
-    PerThreadData* threadData = TlsPerThreadData.get();
-    if (!threadData)
-        return nullptr;
-
-    return threadData->runtimeIfOnOwnerThread();
+    JSContext* cx = TlsContext.get();
+    if (cx && cx->runtime() && CurrentThreadCanAccessRuntime(cx->runtime()))
+        return cx->runtime();
+    return nullptr;
 }
 
 // Crashing inside the signal handler can cause the handler to be recursively
@@ -67,14 +67,14 @@ class AutoSetHandlingSegFault
     explicit AutoSetHandlingSegFault(JSRuntime* rt)
       : rt(rt)
     {
-        MOZ_ASSERT(!rt->handlingSegFault);
-        rt->handlingSegFault = true;
+        MOZ_ASSERT(!rt->unsafeContextFromAnyThread()->handlingSegFault);
+        rt->unsafeContextFromAnyThread()->handlingSegFault = true;
     }
 
     ~AutoSetHandlingSegFault()
     {
-        MOZ_ASSERT(rt->handlingSegFault);
-        rt->handlingSegFault = false;
+        MOZ_ASSERT(rt->unsafeContextFromAnyThread()->handlingSegFault);
+        rt->unsafeContextFromAnyThread()->handlingSegFault = false;
     }
 };
 
@@ -794,11 +794,11 @@ HandleFault(PEXCEPTION_POINTERS exception)
 
     // Don't allow recursive handling of signals, see AutoSetHandlingSegFault.
     JSRuntime* rt = RuntimeForCurrentThread();
-    if (!rt || rt->handlingSegFault)
+    if (!rt || rt->unsafeContextFromAnyThread()->handlingSegFault)
         return false;
     AutoSetHandlingSegFault handling(rt);
 
-    WasmActivation* activation = rt->wasmActivationStack();
+    WasmActivation* activation = rt->unsafeContextFromAnyThread()->wasmActivationStack();
     if (!activation)
         return false;
 
@@ -892,7 +892,7 @@ static bool
 HandleMachException(JSRuntime* rt, const ExceptionRequest& request)
 {
     // Don't allow recursive handling of signals, see AutoSetHandlingSegFault.
-    if (rt->handlingSegFault)
+    if (rt->unsafeContextFromAnyThread()->handlingSegFault)
         return false;
     AutoSetHandlingSegFault handling(rt);
 
@@ -935,7 +935,7 @@ HandleMachException(JSRuntime* rt, const ExceptionRequest& request)
     if (request.body.exception != EXC_BAD_ACCESS || request.body.codeCnt != 2)
         return false;
 
-    WasmActivation* activation = rt->wasmActivationStack();
+    WasmActivation* activation = rt->unsafeContextFromAnyThread()->wasmActivationStack();
     if (!activation)
         return false;
 
@@ -972,7 +972,7 @@ static const mach_msg_id_t sQuitId = 42;
 static void
 MachExceptionHandlerThread(JSRuntime* rt)
 {
-    mach_port_t port = rt->wasmMachExceptionHandler.port();
+    mach_port_t port = rt->unsafeContextFromAnyThread()->wasmMachExceptionHandler.port();
     kern_return_t kret;
 
     while(true) {
@@ -1075,17 +1075,21 @@ MachExceptionHandler::install(JSRuntime* rt)
     kern_return_t kret;
     mach_port_t thread;
 
+    auto onFailure = mozilla::MakeScopeExit([&] {
+        uninstall();
+    });
+
     // Get a port which can send and receive data.
     kret = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &port_);
     if (kret != KERN_SUCCESS)
-        goto error;
+        return false;
     kret = mach_port_insert_right(mach_task_self(), port_, port_, MACH_MSG_TYPE_MAKE_SEND);
     if (kret != KERN_SUCCESS)
-        goto error;
+        return false;
 
     // Create a thread to block on reading port_.
     if (!thread_.init(MachExceptionHandlerThread, rt))
-        goto error;
+        return false;
 
     // Direct exceptions on this thread to port_ (and thus our handler thread).
     // Note: we are totally clobbering any existing *thread* exception ports and
@@ -1100,14 +1104,11 @@ MachExceptionHandler::install(JSRuntime* rt)
                                       THREAD_STATE_NONE);
     mach_port_deallocate(mach_task_self(), thread);
     if (kret != KERN_SUCCESS)
-        goto error;
+        return false;
 
     installed_ = true;
+    onFailure.release();
     return true;
-
-  error:
-    uninstall();
-    return false;
 }
 
 #else  // If not Windows or Mac, assume Unix
@@ -1137,11 +1138,11 @@ HandleFault(int signum, siginfo_t* info, void* ctx)
 
     // Don't allow recursive handling of signals, see AutoSetHandlingSegFault.
     JSRuntime* rt = RuntimeForCurrentThread();
-    if (!rt || rt->handlingSegFault)
+    if (!rt || rt->unsafeContextFromAnyThread()->handlingSegFault)
         return false;
     AutoSetHandlingSegFault handling(rt);
 
-    WasmActivation* activation = rt->wasmActivationStack();
+    WasmActivation* activation = rt->unsafeContextFromAnyThread()->wasmActivationStack();
     if (!activation)
         return false;
 
@@ -1172,6 +1173,10 @@ HandleFault(int signum, siginfo_t* info, void* ctx)
 
 #ifdef JS_CODEGEN_ARM
     if (signal == Signal::BusError) {
+        // TODO: We may see a bus error for something that is an unaligned access that
+        // partly overlaps the end of the heap.  In this case, it is an out-of-bounds
+        // error and we should signal that properly, but to do so we must inspect
+        // the operand of the failed access.
         *ppc = instance->codeSegment().unalignedAccessCode();
         return true;
     }
@@ -1224,8 +1229,10 @@ RedirectIonBackedgesToInterruptCheck(JSRuntime* rt)
         // thus not in a JIT iloop. We assume that the interrupt flag will be
         // checked at least once before entering JIT code (if not, no big deal;
         // the browser will just request another interrupt in a second).
-        if (!jitRuntime->preventBackedgePatching())
-            jitRuntime->patchIonBackedges(rt, jit::JitRuntime::BackedgeInterruptCheck);
+        if (!jitRuntime->preventBackedgePatching()) {
+            jit::JitZoneGroup* jzg = rt->zoneGroupFromAnyThread()->jitZoneGroup;
+            jzg->patchIonBackedges(rt->unsafeContextFromAnyThread(), jit::JitZoneGroup::BackedgeInterruptCheck);
+        }
     }
 }
 
@@ -1236,15 +1243,15 @@ RedirectJitCodeToInterruptCheck(JSRuntime* rt, CONTEXT* context)
 {
     RedirectIonBackedgesToInterruptCheck(rt);
 
-    if (WasmActivation* activation = rt->wasmActivationStack()) {
+    if (WasmActivation* activation = rt->unsafeContextFromAnyThread()->wasmActivationStack()) {
 #ifdef JS_SIMULATOR
         (void)ContextToPC(context);  // silence static 'unused' errors
 
-        void* pc = rt->simulator()->get_pc_as<void*>();
+        void* pc = rt->unsafeContextFromAnyThread()->simulator()->get_pc_as<void*>();
 
         const Instance* instance = activation->compartment()->wasm.lookupInstanceDeprecated(pc);
         if (instance && instance->codeSegment().containsFunctionPC(pc))
-            rt->simulator()->set_resume_pc(instance->codeSegment().interruptCode());
+            rt->unsafeContextFromAnyThread()->simulator()->set_resume_pc(instance->codeSegment().interruptCode());
 #else
         uint8_t** ppc = ContextToPC(context);
         uint8_t* pc = *ppc;
@@ -1283,10 +1290,10 @@ JitInterruptHandler(int signum, siginfo_t* info, void* context)
 
 #if defined(JS_SIMULATOR_ARM) || defined(JS_SIMULATOR_MIPS32) || defined(JS_SIMULATOR_MIPS64)
         Simulator::ICacheCheckingEnabled = prevICacheCheckingState;
-        rt->simulator()->cacheInvalidatedBySignalHandler_ = true;
+        rt->contextFromMainThread()->simulator()->cacheInvalidatedBySignalHandler_ = true;
 #endif
 
-        rt->finishHandlingJitInterrupt();
+        rt->contextFromMainThread()->finishHandlingJitInterrupt();
     }
 }
 #endif
@@ -1301,11 +1308,6 @@ ProcessHasSignalHandlers()
     if (sTriedInstallSignalHandlers)
         return sHaveSignalHandlers;
     sTriedInstallSignalHandlers = true;
-
-    // Developers might want to forcibly disable signals to avoid seeing
-    // spurious SIGSEGVs in the debugger.
-    if (getenv("JS_DISABLE_SLOW_SCRIPT_SIGNALS") || getenv("JS_NO_SIGNALS"))
-        return false;
 
 #if defined(ANDROID)
     // Before Android 4.4 (SDK version 19), there is a bug
@@ -1405,7 +1407,8 @@ wasm::EnsureSignalHandlers(JSRuntime* rt)
 
 #if defined(XP_DARWIN)
     // On OSX, each JSRuntime gets its own handler thread.
-    if (!rt->wasmMachExceptionHandler.installed() && !rt->wasmMachExceptionHandler.install(rt))
+    JSContext* cx = rt->contextFromMainThread();
+    if (!cx->wasmMachExceptionHandler.installed() && !cx->wasmMachExceptionHandler.install(rt))
         return false;
 #endif
 
@@ -1438,7 +1441,7 @@ js::InterruptRunningJitCode(JSRuntime* rt)
 
     // Do nothing if we're already handling an interrupt here, to avoid races
     // below and in JitRuntime::patchIonBackedges.
-    if (!rt->startHandlingJitInterrupt())
+    if (!rt->unsafeContextFromAnyThread()->startHandlingJitInterrupt())
         return;
 
     // If we are on runtime's main thread, then: pc is not in wasm code (so
@@ -1446,7 +1449,7 @@ js::InterruptRunningJitCode(JSRuntime* rt)
     // special synchronization.
     if (rt == RuntimeForCurrentThread()) {
         RedirectIonBackedgesToInterruptCheck(rt);
-        rt->finishHandlingJitInterrupt();
+        rt->contextFromMainThread()->finishHandlingJitInterrupt();
         return;
     }
 
@@ -1457,7 +1460,7 @@ js::InterruptRunningJitCode(JSRuntime* rt)
     // its context from this thread. SuspendThread can sporadically fail if the
     // thread is in the middle of a syscall. Rather than retrying in a loop,
     // just wait for the next request for interrupt.
-    HANDLE thread = (HANDLE)rt->ownerThreadNative();
+    HANDLE thread = (HANDLE)rt->unsafeContextFromAnyThread()->threadNative();
     if (SuspendThread(thread) != -1) {
         CONTEXT context;
         context.ContextFlags = CONTEXT_CONTROL;
@@ -1467,12 +1470,12 @@ js::InterruptRunningJitCode(JSRuntime* rt)
         }
         ResumeThread(thread);
     }
-    rt->finishHandlingJitInterrupt();
+    rt->unsafeContextFromAnyThread()->finishHandlingJitInterrupt();
 #else
     // On Unix, we instead deliver an async signal to the main thread which
     // halts the thread and callers our JitInterruptHandler (which has already
     // been installed by EnsureSignalHandlersInstalled).
-    pthread_t thread = (pthread_t)rt->ownerThreadNative();
+    pthread_t thread = (pthread_t)rt->unsafeContextFromAnyThread()->threadNative();
     pthread_kill(thread, sInterruptSignal);
 #endif
 }
@@ -1484,9 +1487,9 @@ js::wasm::IsPCInWasmCode(void *pc)
     if (!rt)
         return false;
 
-    MOZ_RELEASE_ASSERT(!rt->handlingSegFault);
+    MOZ_RELEASE_ASSERT(!rt->contextFromMainThread()->handlingSegFault);
 
-    WasmActivation* activation = rt->wasmActivationStack();
+    WasmActivation* activation = rt->contextFromMainThread()->wasmActivationStack();
     if (!activation)
         return false;
 

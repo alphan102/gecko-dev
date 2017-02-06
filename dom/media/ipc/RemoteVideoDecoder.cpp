@@ -152,6 +152,13 @@ RemoteDecoderModule::SupportsMimeType(const nsACString& aMimeType,
   return mWrapped->SupportsMimeType(aMimeType, aDiagnostics);
 }
 
+bool
+RemoteDecoderModule::Supports(const TrackInfo& aTrackInfo,
+                              DecoderDoctorDiagnostics* aDiagnostics) const
+{
+  return mWrapped->Supports(aTrackInfo, aDiagnostics);
+}
+
 PlatformDecoderModule::ConversionRequired
 RemoteDecoderModule::DecoderNeedsConversion(const TrackInfo& aConfig) const
 {
@@ -164,7 +171,7 @@ RemoteDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
   if (!MediaPrefs::PDMUseGPUDecoder() ||
       !aParams.mKnowsCompositor ||
       aParams.mKnowsCompositor->GetTextureFactoryIdentifier().mParentProcessType != GeckoProcessType_GPU) {
-    return nullptr;
+    return mWrapped->CreateVideoDecoder(aParams);
   }
 
   MediaDataDecoderCallback* callback = aParams.mCallback;

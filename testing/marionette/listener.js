@@ -309,8 +309,8 @@ function startListeners() {
 function waitForReady() {
   if (content.document.readyState == 'complete') {
     readyStateTimer.cancel();
-    content.addEventListener("mozbrowsershowmodalprompt", modalHandler, false);
-    content.addEventListener("unload", waitForReady, false);
+    content.addEventListener("mozbrowsershowmodalprompt", modalHandler);
+    content.addEventListener("unload", waitForReady);
   }
   else {
     readyStateTimer.initWithCallback(waitForReady, 100, Ci.nsITimer.TYPE_ONE_SHOT);
@@ -407,7 +407,7 @@ function deleteSession(msg) {
   removeMessageListenerId("Marionette:deleteAllCookies", deleteAllCookiesFn);
   removeMessageListenerId("Marionette:deleteCookie", deleteCookieFn);
   if (isB2G) {
-    content.removeEventListener("mozbrowsershowmodalprompt", modalHandler, false);
+    content.removeEventListener("mozbrowsershowmodalprompt", modalHandler);
   }
   seenEls.clear();
   // reset container frame to the top-most frame
@@ -685,9 +685,9 @@ function createATouch(el, corx, cory, touchId) {
  *      Object with an |actions| attribute that is an Array of objects
  *      each of which represents an action sequence.
  */
-function performActions(msg) {
+function* performActions(msg) {
   let chain = action.Chain.fromJson(msg.actions);
-  action.dispatch(chain, seenEls, curContainer);
+  yield action.dispatch(chain, seenEls, curContainer);
 }
 
 /**
@@ -696,8 +696,8 @@ function performActions(msg) {
  * the state was released by an explicit series of actions. It also clears all
  * the internal state of the virtual devices.
  */
-function releaseActions() {
-  action.dispatchTickActions(action.inputsToCancel.reverse(), 0, seenEls, curContainer);
+function* releaseActions() {
+  yield action.dispatchTickActions(action.inputsToCancel.reverse(), 0, seenEls, curContainer);
   action.inputsToCancel.length = 0;
   action.inputStateMap.clear();
 }
@@ -951,6 +951,10 @@ function get(msg) {
   let start = new Date().getTime();
   let {pageTimeout, url, command_id} = msg.json;
 
+  // We need to move to the top frame before navigating
+  sendSyncMessage("Marionette:switchedToFrame", {frameValue: null});
+  curContainer.frame = content;
+
   let docShell = curContainer.frame
       .document
       .defaultView
@@ -1068,12 +1072,6 @@ function get(msg) {
       sendError(new TimeoutError("Error loading page, timed out (onDOMContentLoaded)"), command_id);
     };
     navTimer.initWithCallback(onTimeout, pageTimeout, Ci.nsITimer.TYPE_ONE_SHOT);
-  }
-
-  // in Firefox we need to move to the top frame before navigating
-  if (!isB2G) {
-    sendSyncMessage("Marionette:switchedToFrame", {frameValue: null});
-    curContainer.frame = content;
   }
 
   if (loadEventExpected) {
@@ -1283,7 +1281,7 @@ function isElementDisplayed(id) {
  */
 function getElementValueOfCssProperty(id, prop) {
   let el = seenEls.get(id, curContainer);
-  let st = curContainer.frame.document.defaultView.getComputedStyle(el, null);
+  let st = curContainer.frame.document.defaultView.getComputedStyle(el);
   return st.getPropertyValue(prop);
 }
 

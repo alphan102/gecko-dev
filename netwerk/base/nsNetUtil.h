@@ -16,6 +16,7 @@
 #include "nsILoadInfo.h"
 #include "nsIIOService.h"
 #include "mozilla/Services.h"
+#include "mozilla/Unused.h"
 #include "nsNetCID.h"
 #include "nsServiceManagerUtils.h"
 
@@ -48,7 +49,7 @@ class nsIIncrementalStreamLoaderObserver;
 class nsIUnicharStreamLoader;
 class nsIUnicharStreamLoaderObserver;
 
-namespace mozilla { class NeckoOriginAttributes; }
+namespace mozilla { class OriginAttributes; }
 
 template <class> class nsCOMPtr;
 template <typename> struct already_AddRefed;
@@ -598,13 +599,13 @@ NS_QueryNotificationCallbacks(T            *channel,
     *result = nullptr;
 
     nsCOMPtr<nsIInterfaceRequestor> cbs;
-    channel->GetNotificationCallbacks(getter_AddRefs(cbs));
+    mozilla::Unused << channel->GetNotificationCallbacks(getter_AddRefs(cbs));
     if (cbs)
         cbs->GetInterface(iid, result);
     if (!*result) {
         // try load group's notification callbacks...
         nsCOMPtr<nsILoadGroup> loadGroup;
-        channel->GetLoadGroup(getter_AddRefs(loadGroup));
+        mozilla::Unused << channel->GetLoadGroup(getter_AddRefs(loadGroup));
         if (loadGroup) {
             loadGroup->GetNotificationCallbacks(getter_AddRefs(cbs));
             if (cbs)
@@ -657,10 +658,10 @@ NS_QueryNotificationCallbacks(nsIInterfaceRequestor  *callbacks,
 bool NS_UsePrivateBrowsing(nsIChannel *channel);
 
 /**
- * Extract the NeckoOriginAttributes from the channel's triggering principal.
+ * Extract the OriginAttributes from the channel's triggering principal.
  */
 bool NS_GetOriginAttributes(nsIChannel *aChannel,
-                            mozilla::NeckoOriginAttributes &aAttributes);
+                            mozilla::OriginAttributes &aAttributes);
 
 /**
  * Returns true if the channel has visited any cross-origin URLs on any

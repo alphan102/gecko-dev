@@ -543,7 +543,7 @@ Cookies.prototype = {
   _readCookieFile(aFile, aCallback) {
     let fileReader = new FileReader();
     let onLoadEnd = () => {
-      fileReader.removeEventListener("loadend", onLoadEnd, false);
+      fileReader.removeEventListener("loadend", onLoadEnd);
 
       if (fileReader.readyState != fileReader.DONE) {
         Cu.reportError("Could not read cookie contents: " + fileReader.error);
@@ -561,7 +561,7 @@ Cookies.prototype = {
         aCallback(success);
       }
     };
-    fileReader.addEventListener("loadend", onLoadEnd, false);
+    fileReader.addEventListener("loadend", onLoadEnd);
     fileReader.readAsText(File.createFromNsIFile(aFile));
   },
 
@@ -791,7 +791,7 @@ WindowsVaultFormPasswords.prototype = {
           let url = item.contents.pResourceElement.contents.itemValue.readString();
           let realURL;
           try {
-            realURL = Services.io.newURI(url, null, null);
+            realURL = Services.io.newURI(url);
           } catch (ex) { /* leave realURL as null */ }
           if (!realURL || ["http", "https", "ftp"].indexOf(realURL.scheme) == -1) {
             // Ignore items for non-URLs or URLs that aren't HTTP(S)/FTP

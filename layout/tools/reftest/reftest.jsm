@@ -63,7 +63,6 @@ const BLANK_URL_FOR_CLEARING = "data:text/html;charset=UTF-8,%3C%21%2D%2DCLEAR%2
 var gBrowser;
 // Are we testing web content loaded in a separate process?
 var gBrowserIsRemote;           // bool
-var gB2GisMulet;                // bool
 // Are we using <iframe mozbrowser>?
 var gBrowserIsIframe;           // bool
 var gBrowserMessageManager;
@@ -283,12 +282,6 @@ this.OnRefTestLoad = function OnRefTestLoad(win)
     }
 
     try {
-        gB2GisMulet = prefs.getBoolPref("b2g.is_mulet");
-    } catch (e) {
-        gB2GisMulet = false;
-    }
-
-    try {
       gBrowserIsIframe = prefs.getBoolPref("reftest.browser.iframe.enabled");
     } catch (e) {
       gBrowserIsIframe = false;
@@ -323,12 +316,7 @@ this.OnRefTestLoad = function OnRefTestLoad(win)
     gBrowser.setAttribute("style", "padding: 0px; margin: 0px; border:none; min-width: 800px; min-height: 1000px; max-width: 800px; max-height: 1000px");
 
     if (Services.appinfo.OS == "Android") {
-      let doc;
-      if (Services.appinfo.widgetToolkit == "gonk") {
-        doc = gContainingWindow.document.getElementsByTagName("html")[0];
-      } else {
-        doc = gContainingWindow.document.getElementById('main-window');
-      }
+      let doc = gContainingWindow.document.getElementById('main-window');
       while (doc.hasChildNodes()) {
         doc.removeChild(doc.firstChild);
       }
@@ -443,10 +431,11 @@ function InitAndStartRefTests()
 
     // Focus the content browser.
     if (gFocusFilterMode != FOCUS_FILTER_NON_NEEDS_FOCUS_TESTS) {
+        gBrowser.addEventListener("focus", StartTests, true);
         gBrowser.focus();
+    } else {
+        StartTests();
     }
-
-    StartTests();
 }
 
 function StartHTTPServer()
@@ -469,6 +458,10 @@ function Shuffle(array)
 
 function StartTests()
 {
+    if (gFocusFilterMode != FOCUS_FILTER_NON_NEEDS_FOCUS_TESTS) {
+        gBrowser.removeEventListener("focus", StartTests, true);
+    }
+
     var manifests;
     /* These prefs are optional, so we don't need to spit an error to the log */
     try {
@@ -671,7 +664,6 @@ function BuildConditionSandbox(aURL) {
 
     sandbox.gpuProcess = gfxInfo.usingGPUProcess;
     sandbox.azureCairo = canvasBackend == "cairo";
-    sandbox.azureQuartz = canvasBackend == "quartz";
     sandbox.azureSkia = canvasBackend == "skia";
     sandbox.skiaContent = contentBackend == "skia";
     sandbox.azureSkiaGL = canvasAccelerated; // FIXME: assumes GL right now
@@ -691,8 +683,7 @@ function BuildConditionSandbox(aURL) {
       gWindowUtils.layerManagerRemote == true;
 
     // Shortcuts for widget toolkits.
-    sandbox.B2G = xr.widgetToolkit == "gonk";
-    sandbox.Android = xr.OS == "Android" && !sandbox.B2G;
+    sandbox.Android = xr.OS == "Android";
     sandbox.cocoaWidget = xr.widgetToolkit == "cocoa";
     sandbox.gtkWidget = xr.widgetToolkit == "gtk2"
                         || xr.widgetToolkit == "gtk3";
@@ -759,6 +750,11 @@ function BuildConditionSandbox(aURL) {
     } catch (e) {
         sandbox.nativeThemePref = true;
     }
+    try {
+        sandbox.gpuProcessForceEnabled = prefs.getBoolPref("layers.gpu-process.force-enabled");
+    } catch (e) {
+        sandbox.gpuProcessForceEnabled = false;
+    }
 
     sandbox.prefs = CU.cloneInto({
         getBoolPref: function(p) { return prefs.getBoolPref(p); },
@@ -768,7 +764,6 @@ function BuildConditionSandbox(aURL) {
     // Tests shouldn't care about this except for when they need to
     // crash the content process
     sandbox.browserIsRemote = gBrowserIsRemote;
-    sandbox.Mulet = gB2GisMulet;
 
     try {
         sandbox.asyncPan = gContainingWindow.document.docShell.asyncPanZoomEnabled;
@@ -815,7 +810,7 @@ function AddPrefSettings(aWhere, aPrefName, aPrefValExpression, aSandbox, aTestP
 
 function ReadTopManifest(aFileURL, aFilter)
 {
-    var url = gIOService.newURI(aFileURL, null, null);
+    var url = gIOService.newURI(aFileURL);
     if (!url)
         throw "Expected a file or http URL for the manifest.";
     ReadManifest(url, EXPECTED_PASS, aFilter);
@@ -1219,7 +1214,7 @@ function ServeFiles(manifestPrincipal, depth, aURL, files)
                      .getService(CI.nsIScriptSecurityManager);
 
     var testbase = gIOService.newURI("http://localhost:" + gHttpServerPort +
-                                     path + dirPath, null, null);
+                                     path + dirPath);
 
     // Give the testbase URI access to XUL and XBL
     Services.perms.add(testbase, "allowXULXBL", Services.perms.ALLOW_ACTION);

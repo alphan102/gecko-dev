@@ -79,14 +79,8 @@ HashValue(const Value& v, const mozilla::HashCodeScrambler& hcs)
 
     if (v.isString())
         return v.toString()->asAtom().hash();
-    if (v.isSymbol()) {
-        Symbol* sym = v.toSymbol();
-        if (sym->isWellKnownSymbol())
-            return HashNumber(sym->code());
-        if (sym->code() == SymbolCode::InSymbolRegistry)
-            return sym->description()->hash();
-        return hcs.scramble(v.asRawBits());
-    }
+    if (v.isSymbol())
+        return v.toSymbol()->hash();
     if (v.isObject())
         return hcs.scramble(v.asRawBits());
 
@@ -108,9 +102,9 @@ HashableValue::operator==(const HashableValue& other) const
 
 #ifdef DEBUG
     bool same;
-    JS::RootingContext* rcx = GetJSContextFromMainThread();
-    RootedValue valueRoot(rcx, value);
-    RootedValue otherRoot(rcx, other.value);
+    JSContext* cx = TlsContext.get();
+    RootedValue valueRoot(cx, value);
+    RootedValue otherRoot(cx, other.value);
     MOZ_ASSERT(SameValue(nullptr, valueRoot, otherRoot, &same));
     MOZ_ASSERT(same == b);
 #endif
@@ -170,7 +164,7 @@ MapIteratorObject::kind() const
     return MapObject::IteratorKind(i);
 }
 
-bool
+/* static */ bool
 GlobalObject::initMapIteratorProto(JSContext* cx, Handle<GlobalObject*> global)
 {
     Rooted<JSObject*> base(cx, GlobalObject::getOrCreateIteratorPrototype(cx, global));
@@ -287,7 +281,7 @@ MapIteratorObject::createResultPair(JSContext* cx)
 static JSObject*
 CreateMapPrototype(JSContext* cx, JSProtoKey key)
 {
-    return cx->global()->createBlankPrototype(cx, &MapObject::protoClass_);
+    return GlobalObject::createBlankPrototype(cx, cx->global(), &MapObject::protoClass_);
 }
 
 const ClassOps MapObject::classOps_ = {
@@ -470,7 +464,7 @@ WriteBarrierPostImpl(JSRuntime* rt, ObjectT* obj, const Value& keyValue)
         if (!keys)
             return false;
 
-        rt->gc.storeBuffer.putGeneric(OrderedHashTableRef<ObjectT>(obj));
+        key->zone()->group()->storeBuffer().putGeneric(OrderedHashTableRef<ObjectT>(obj));
     }
 
     if (!keys->append(key))
@@ -905,7 +899,7 @@ SetIteratorObject::kind() const
     return SetObject::IteratorKind(i);
 }
 
-bool
+/* static */ bool
 GlobalObject::initSetIteratorProto(JSContext* cx, Handle<GlobalObject*> global)
 {
     Rooted<JSObject*> base(cx, GlobalObject::getOrCreateIteratorPrototype(cx, global));
@@ -1009,7 +1003,7 @@ SetIteratorObject::createResult(JSContext* cx)
 static JSObject*
 CreateSetPrototype(JSContext* cx, JSProtoKey key)
 {
-    return cx->global()->createBlankPrototype(cx, &SetObject::protoClass_);
+    return GlobalObject::createBlankPrototype(cx, cx->global(), &SetObject::protoClass_);
 }
 
 const ClassOps SetObject::classOps_ = {

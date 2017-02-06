@@ -29,14 +29,14 @@ using mozilla::IsInRange;
 uint32_t
 jit::Bailout(BailoutStack* sp, BaselineBailoutInfo** bailoutInfo)
 {
-    JSContext* cx = GetJSContextFromMainThread();
+    JSContext* cx = TlsContext.get();
     MOZ_ASSERT(bailoutInfo);
 
     // We don't have an exit frame.
     MOZ_ASSERT(IsInRange(FAKE_JIT_TOP_FOR_BAILOUT, 0, 0x1000) &&
                IsInRange(FAKE_JIT_TOP_FOR_BAILOUT + sizeof(CommonFrameLayout), 0, 0x1000),
                "Fake jitTop pointer should be within the first page.");
-    cx->runtime()->jitTop = FAKE_JIT_TOP_FOR_BAILOUT;
+    cx->jitTop = FAKE_JIT_TOP_FOR_BAILOUT;
 
     JitActivationIterator jitActivations(cx->runtime());
     BailoutFrameInfo bailoutData(jitActivations, sp);
@@ -62,7 +62,7 @@ jit::Bailout(BailoutStack* sp, BaselineBailoutInfo** bailoutInfo)
     if (retval != BAILOUT_RETURN_OK) {
         JSScript* script = iter.script();
         probes::ExitScript(cx, script, script->functionNonDelazifying(),
-                           /* popSPSFrame = */ false);
+                           /* popProfilerFrame = */ false);
     }
 
     // This condition was wrong when we entered this bailout function, but it
@@ -94,7 +94,7 @@ jit::Bailout(BailoutStack* sp, BaselineBailoutInfo** bailoutInfo)
     // In both cases, we want to temporarily set the |lastProfilingFrame|
     // to the current frame being bailed out, and then fix it up later.
     if (cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(cx->runtime()))
-        cx->runtime()->jitActivation->setLastProfilingFrame(currentFramePtr);
+        cx->jitActivation->setLastProfilingFrame(currentFramePtr);
 
     return retval;
 }
@@ -105,10 +105,10 @@ jit::InvalidationBailout(InvalidationBailoutStack* sp, size_t* frameSizeOut,
 {
     sp->checkInvariants();
 
-    JSContext* cx = GetJSContextFromMainThread();
+    JSContext* cx = TlsContext.get();
 
     // We don't have an exit frame.
-    cx->runtime()->jitTop = FAKE_JIT_TOP_FOR_BAILOUT;
+    cx->jitTop = FAKE_JIT_TOP_FOR_BAILOUT;
 
     JitActivationIterator jitActivations(cx->runtime());
     BailoutFrameInfo bailoutData(jitActivations, sp);
@@ -136,18 +136,18 @@ jit::InvalidationBailout(InvalidationBailoutStack* sp, size_t* frameSizeOut,
     if (retval != BAILOUT_RETURN_OK) {
         // If the bailout failed, then bailout trampoline will pop the
         // current frame and jump straight to exception handling code when
-        // this function returns.  Any SPS entry pushed for this frame will
-        // be silently forgotten.
+        // this function returns.  Any Gecko Profiler entry pushed for this
+        // frame will be silently forgotten.
         //
-        // We call ExitScript here to ensure that if the ionScript had SPS
-        // instrumentation, then the SPS entry for it is popped.
+        // We call ExitScript here to ensure that if the ionScript had Gecko
+        // Profiler instrumentation, then the entry for it is popped.
         //
         // However, if the bailout was during argument check, then a
         // pseudostack frame would not have been pushed in the first
         // place, so don't pop anything in that case.
         JSScript* script = iter.script();
         probes::ExitScript(cx, script, script->functionNonDelazifying(),
-                           /* popSPSFrame = */ false);
+                           /* popProfilerFrame = */ false);
 
 #ifdef JS_JITSPEW
         JitFrameLayout* frame = iter.jsFrame();
@@ -163,7 +163,7 @@ jit::InvalidationBailout(InvalidationBailoutStack* sp, size_t* frameSizeOut,
 
     // Make the frame being bailed out the top profiled frame.
     if (cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(cx->runtime()))
-        cx->runtime()->jitActivation->setLastProfilingFrame(currentFramePtr);
+        cx->jitActivation->setLastProfilingFrame(currentFramePtr);
 
     return retval;
 }
@@ -192,9 +192,9 @@ jit::ExceptionHandlerBailout(JSContext* cx, const InlineFrameIterator& frame,
     // operation callback like a timeout handler.
     MOZ_ASSERT_IF(!excInfo.propagatingIonExceptionForDebugMode(), cx->isExceptionPending());
 
-    uint8_t* prevJitTop = cx->runtime()->jitTop;
-    auto restoreJitTop = mozilla::MakeScopeExit([&]() { cx->runtime()->jitTop = prevJitTop; });
-    cx->runtime()->jitTop = FAKE_JIT_TOP_FOR_BAILOUT;
+    uint8_t* prevJitTop = cx->jitTop;
+    auto restoreJitTop = mozilla::MakeScopeExit([&]() { cx->jitTop = prevJitTop; });
+    cx->jitTop = FAKE_JIT_TOP_FOR_BAILOUT;
 
     gc::AutoSuppressGC suppress(cx);
 
@@ -249,7 +249,7 @@ jit::ExceptionHandlerBailout(JSContext* cx, const InlineFrameIterator& frame,
 
     // Make the frame being bailed out the top profiled frame.
     if (cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(cx->runtime()))
-        cx->runtime()->jitActivation->setLastProfilingFrame(currentFramePtr);
+        cx->jitActivation->setLastProfilingFrame(currentFramePtr);
 
     return retval;
 }

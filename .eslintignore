@@ -6,7 +6,7 @@ obj*/**
 
 # We ignore all these directories by default, until we get them enabled.
 # If you are enabling a directory, please add directory specific exclusions
-# below.
+# below.
 addon-sdk/**
 build/**
 caps/**
@@ -38,6 +38,7 @@ parser/**
 probes/**
 python/**
 rdf/**
+servo/**
 startupcache/**
 testing/**
 tools/update-packaging/**
@@ -68,7 +69,8 @@ browser/components/sessionstore/**
 browser/components/tabview/**
 # generated files in cld2
 browser/components/translation/cld2/cld-worker.js
-browser/extensions/pdfjs/**
+browser/extensions/pdfjs/content/build**
+browser/extensions/pdfjs/content/web**
 # generated or library files in pocket
 browser/extensions/pocket/content/panels/js/tmpl.js
 browser/extensions/pocket/content/panels/js/vendor/**
@@ -90,6 +92,7 @@ devtools/client/responsivedesign/**
 devtools/client/scratchpad/**
 devtools/client/shadereditor/**
 devtools/client/shared/*.jsm
+devtools/client/shared/components/reps/reps.js
 devtools/client/shared/webgl-utils.js
 devtools/client/shared/widgets/*.jsm
 devtools/client/webaudioeditor/**
@@ -102,16 +105,11 @@ devtools/client/webconsole/webconsole-connection-proxy.js
 devtools/client/webconsole/webconsole.js
 devtools/client/webide/**
 !devtools/client/webide/components/webideCli.js
-devtools/server/actors/*.js
-!devtools/server/actors/csscoverage.js
-!devtools/server/actors/inspector.js
-!devtools/server/actors/layout.js
-!devtools/server/actors/string.js
-!devtools/server/actors/styles.js
-!devtools/server/actors/tab.js
-!devtools/server/actors/webbrowser.js
-!devtools/server/actors/webextension.js
-!devtools/server/actors/webextension-inspected-window.js
+devtools/server/actors/webconsole.js
+devtools/server/actors/object.js
+devtools/server/actors/script.js
+devtools/server/actors/styleeditor.js
+devtools/server/actors/stylesheets.js
 devtools/server/tests/browser/**
 !devtools/server/tests/browser/browser_webextension_inspected_window.js
 devtools/server/tests/mochitest/**
@@ -184,6 +182,11 @@ mobile/android/modules/HomeProvider.jsm
 # Uses `#filter substitution`
 services/sync/modules/constants.js
 
+# Third party services
+services/common/kinto-http-client.js
+services/common/kinto-offline-client.js
+services/sync/tps/extensions/mozmill
+
 # toolkit/ exclusions
 
 # Not part of the default build
@@ -208,7 +211,6 @@ toolkit/content/widgets/wizard.xml
 toolkit/components/jsdownloads/src/DownloadIntegration.jsm
 toolkit/components/url-classifier/**
 toolkit/components/urlformatter/nsURLFormatter.js
-toolkit/identity/FirefoxAccounts.jsm
 toolkit/modules/AppConstants.jsm
 toolkit/mozapps/downloads/nsHelperAppDlg.js
 toolkit/mozapps/extensions/internal/AddonConstants.jsm

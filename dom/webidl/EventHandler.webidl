@@ -15,13 +15,11 @@ callback EventHandlerNonNull = any (Event event);
 typedef EventHandlerNonNull? EventHandler;
 
 [TreatNonObjectAsNull]
-// https://www.w3.org/Bugs/Public/show_bug.cgi?id=23489
-//callback OnBeforeUnloadEventHandlerNonNull = DOMString (Event event);
 callback OnBeforeUnloadEventHandlerNonNull = DOMString? (Event event);
 typedef OnBeforeUnloadEventHandlerNonNull? OnBeforeUnloadEventHandler;
 
 [TreatNonObjectAsNull]
-callback OnErrorEventHandlerNonNull = boolean ((Event or DOMString) event, optional DOMString source, optional unsigned long lineno, optional unsigned long column, optional any error);
+callback OnErrorEventHandlerNonNull = any ((Event or DOMString) event, optional DOMString source, optional unsigned long lineno, optional unsigned long column, optional any error);
 typedef OnErrorEventHandlerNonNull? OnErrorEventHandler;
 
 [NoInterfaceObject]
@@ -122,10 +120,6 @@ interface GlobalEventHandlers {
            // Document rather than here.
            attribute EventHandler onmozfullscreenchange;
            attribute EventHandler onmozfullscreenerror;
-           [Pref="pointer-lock-api.prefixed.enabled"]
-           attribute EventHandler onmozpointerlockchange;
-           [Pref="pointer-lock-api.prefixed.enabled"]
-           attribute EventHandler onmozpointerlockerror;
 
            // CSS-Animation and CSS-Transition handlers.
            attribute EventHandler onanimationend;
@@ -159,6 +153,13 @@ interface WindowEventHandlers {
            attribute EventHandler onpopstate;
            attribute EventHandler onstorage;
            attribute EventHandler onunload;
+};
+
+[NoInterfaceObject]
+interface DocumentAndElementEventHandlers {
+  attribute EventHandler oncopy;
+  attribute EventHandler oncut;
+  attribute EventHandler onpaste;
 };
 
 // The spec has |attribute OnErrorEventHandler onerror;| on

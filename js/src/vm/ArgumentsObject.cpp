@@ -214,7 +214,7 @@ ArgumentsObject::createTemplateObject(JSContext* cx, bool mapped)
                          ? &MappedArgumentsObject::class_
                          : &UnmappedArgumentsObject::class_;
 
-    RootedObject proto(cx, cx->global()->getOrCreateObjectPrototype(cx));
+    RootedObject proto(cx, GlobalObject::getOrCreateObjectPrototype(cx, cx->global()));
     if (!proto)
         return nullptr;
 
@@ -803,7 +803,7 @@ ArgumentsObject::objectMovedDuringMinorGC(JSTracer* trc, JSObject* dst, JSObject
     ArgumentsObject* nsrc = &src->as<ArgumentsObject>();
     MOZ_ASSERT(ndst->data() == nsrc->data());
 
-    Nursery& nursery = trc->runtime()->gc.nursery;
+    Nursery& nursery = dst->zone()->group()->nursery();
 
     size_t nbytesTotal = 0;
     if (!nursery.isInside(nsrc->data())) {

@@ -78,7 +78,7 @@ event.sendMouseEvent = function (mouseEvent, target, window = undefined) {
   if (!target.nodeType) {
     target = window.document.getElementById(target);
   } else {
-    window = window || target.ownerDocument.defaultView;
+    window = window || target.ownerGlobal;
   }
 
   let ev = window.document.createEvent("MouseEvent");
@@ -889,7 +889,7 @@ function expectEvent_(expectedTarget, expectedEvent, testName) {
     seenEvent = true;
   };
 
-  expectedTarget.addEventListener(type, handler, false);
+  expectedTarget.addEventListener(type, handler);
   return handler;
 }
 
@@ -906,7 +906,7 @@ function checkExpectedEvent_(
     if (!type) {
       type = expectedEvent.substring(1);
     }
-    expectedTarget.removeEventListener(type, eventHandler, false);
+    expectedTarget.removeEventListener(type, eventHandler);
 
     let desc = `${type} event`;
     if (!expectEvent) {

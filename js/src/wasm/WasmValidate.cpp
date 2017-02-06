@@ -424,6 +424,7 @@ DecodeFunctionBodyExprs(FunctionDecoder& f)
           case uint16_t(Op::End):
             if (!f.iter().readEnd(nullptr, nullptr, nullptr))
                 return false;
+            f.iter().popEnd();
             if (f.iter().controlStackEmpty())
                 return true;
             break;
@@ -872,7 +873,7 @@ DecodeTableLimits(Decoder& d, TableDescVector* tables)
     if (!DecodeLimits(d, &limits))
         return false;
 
-    if (limits.initial > MaxTableLength)
+    if (limits.initial > MaxTableInitialLength)
         return d.fail("too many table elements");
 
     if (tables->length())
@@ -913,10 +914,10 @@ DecodeGlobalType(Decoder& d, ValType* type, bool* isMutable)
     if (!d.readVarU32(&flags))
         return d.fail("expected global flags");
 
-    if (flags & ~uint32_t(GlobalFlags::AllowedMask))
+    if (flags & ~uint32_t(GlobalTypeImmediate::AllowedMask))
         return d.fail("unexpected bits set in global flags");
 
-    *isMutable = flags & uint32_t(GlobalFlags::IsMutable);
+    *isMutable = flags & uint32_t(GlobalTypeImmediate::IsMutable);
     return true;
 }
 
@@ -932,7 +933,7 @@ DecodeMemoryLimits(Decoder& d, ModuleEnvironment* env)
 
     CheckedInt<uint32_t> initialBytes = memory.initial;
     initialBytes *= PageSize;
-    if (!initialBytes.isValid() || initialBytes.value() > uint32_t(INT32_MAX))
+    if (!initialBytes.isValid() || initialBytes.value() > MaxMemoryInitialBytes)
         return d.fail("initial memory size too big");
 
     memory.initial = initialBytes.value();
@@ -1089,11 +1090,13 @@ DecodeTableSection(Decoder& d, ModuleEnvironment* env)
     if (!d.readVarU32(&numTables))
         return d.fail("failed to read number of tables");
 
-    if (numTables != 1)
-        return d.fail("the number of tables must be exactly one");
+    if (numTables > 1)
+        return d.fail("the number of tables must be at most one");
 
-    if (!DecodeTableLimits(d, &env->tables))
-        return false;
+    for (uint32_t i = 0; i < numTables; ++i) {
+        if (!DecodeTableLimits(d, &env->tables))
+            return false;
+    }
 
     if (!d.finishSection(sectionStart, sectionSize, "table"))
         return false;
@@ -1114,11 +1117,13 @@ DecodeMemorySection(Decoder& d, ModuleEnvironment* env)
     if (!d.readVarU32(&numMemories))
         return d.fail("failed to read number of memories");
 
-    if (numMemories != 1)
-        return d.fail("the number of memories must be exactly one");
+    if (numMemories > 1)
+        return d.fail("the number of memories must be at most one");
 
-    if (!DecodeMemoryLimits(d, env))
-        return false;
+    for (uint32_t i = 0; i < numMemories; ++i) {
+        if (!DecodeMemoryLimits(d, env))
+            return false;
+    }
 
     if (!d.finishSection(sectionStart, sectionSize, "memory"))
         return false;
@@ -1413,7 +1418,7 @@ DecodeElemSection(Decoder& d, ModuleEnvironment* env)
         if (!d.readVarU32(&numElems))
             return d.fail("expected segment size");
 
-        if (numElems > MaxTableLength)
+        if (numElems > MaxTableInitialLength)
             return d.fail("too many table elements");
 
         Uint32Vector elemFuncIndices;
@@ -1534,9 +1539,6 @@ DecodeDataSection(Decoder& d, ModuleEnvironment* env)
     if (sectionStart == Decoder::NotStarted)
         return true;
 
-    if (!env->usesMemory())
-        return d.fail("data section requires a memory section");
-
     uint32_t numSegments;
     if (!d.readVarU32(&numSegments))
         return d.fail("failed to read number of data segments");
@@ -1552,12 +1554,18 @@ DecodeDataSection(Decoder& d, ModuleEnvironment* env)
         if (linearMemoryIndex != 0)
             return d.fail("linear memory index must currently be 0");
 
+        if (!env->usesMemory())
+            return d.fail("data segment requires a memory section");
+
         DataSegment seg;
         if (!DecodeInitializerExpression(d, env->globals, ValType::I32, &seg.offset))
             return false;
 
         if (!d.readVarU32(&seg.length))
             return d.fail("expected segment size");
+
+        if (seg.length > MaxMemoryInitialBytes)
+            return d.fail("segment size too big");
 
         seg.bytecodeOffset = d.currentOffset();
 

@@ -5,26 +5,24 @@ const DUMMY2 = "http://example.org/browser/toolkit/modules/tests/browser/dummy_p
 
 function waitForLoad(browser = gBrowser.selectedBrowser) {
   return new Promise(resolve => {
-    browser.addEventListener("load", function listener() {
-      browser.removeEventListener("load", listener, true);
+    browser.addEventListener("load", function() {
       resolve();
-    }, true);
+    }, {capture: true, once: true});
   });
 }
 
 function waitForPageShow(browser = gBrowser.selectedBrowser) {
   return new Promise(resolve => {
-    browser.addEventListener("pageshow", function listener() {
-      browser.removeEventListener("pageshow", listener, true);
+    browser.addEventListener("pageshow", function() {
       resolve();
-    }, true);
+    }, {capture: true, once: true});
   });
 }
 
 function makeURI(url) {
   return Cc["@mozilla.org/network/io-service;1"].
          getService(Ci.nsIIOService).
-         newURI(url, null, null);
+         newURI(url);
 }
 
 // Tests that loadURI accepts a referrer and it is included in the load.

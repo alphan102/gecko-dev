@@ -14,7 +14,7 @@ function SteamStore(engine) {
 SteamStore.prototype = {
   __proto__: Store.prototype,
 
-  wipe: function() {
+  wipe() {
     this.wasWiped = true;
   }
 };
@@ -36,11 +36,11 @@ SteamEngine.prototype = {
   _storeObj: SteamStore,
   _trackerObj: SteamTracker,
 
-  _resetClient: function () {
+  _resetClient() {
     this.wasReset = true;
   },
 
-  _sync: function () {
+  _sync() {
     this.wasSynced = true;
   }
 };
@@ -48,12 +48,12 @@ SteamEngine.prototype = {
 var engineObserver = {
   topics: [],
 
-  observe: function(subject, topic, data) {
+  observe(subject, topic, data) {
     do_check_eq(data, "steam");
     this.topics.push(topic);
   },
 
-  reset: function() {
+  reset() {
     this.topics = [];
   }
 };
@@ -63,6 +63,15 @@ Observers.add("weave:engine:wipe-client:start", engineObserver);
 Observers.add("weave:engine:wipe-client:finish", engineObserver);
 Observers.add("weave:engine:sync:start", engineObserver);
 Observers.add("weave:engine:sync:finish", engineObserver);
+
+async function cleanup(engine) {
+  Svc.Prefs.resetBranch("");
+  engine.wasReset = false;
+  engine.wasSynced = false;
+  engineObserver.reset();
+  engine._tracker.clearChangedIDs();
+  await engine._tracker._storage.finalize();
+}
 
 add_task(async function test_members() {
   _("Engine object members");
@@ -82,7 +91,7 @@ add_task(async function test_score() {
 
   try {
     engine.score = 10;
-  } catch(ex) {
+  } catch (ex) {
     // Setting an attribute that has a getter produces an error in
     // Firefox <= 3.6 and is ignored in later versions.  Either way,
     // the attribute's value won't change.
@@ -100,9 +109,7 @@ add_task(async function test_resetClient() {
   do_check_eq(engineObserver.topics[0], "weave:engine:reset-client:start");
   do_check_eq(engineObserver.topics[1], "weave:engine:reset-client:finish");
 
-  engine.wasReset = false;
-  engineObserver.reset();
-  engine._tracker.clearChangedIDs();
+  await cleanup(engine);
 });
 
 add_task(async function test_invalidChangedIDs() {
@@ -121,7 +128,7 @@ add_task(async function test_invalidChangedIDs() {
   ok(tracker._storage.dataReady);
 
   do_check_true(tracker.changedIDs.placeholder);
-  engine._tracker.clearChangedIDs();
+  await cleanup(engine);
 });
 
 add_task(async function test_wipeClient() {
@@ -141,10 +148,7 @@ add_task(async function test_wipeClient() {
   do_check_eq(engineObserver.topics[2], "weave:engine:reset-client:finish");
   do_check_eq(engineObserver.topics[3], "weave:engine:wipe-client:finish");
 
-  engine.wasReset = false;
-  engine._store.wasWiped = false;
-  engineObserver.reset();
-  engine._tracker.clearChangedIDs();
+  await cleanup(engine);
 });
 
 add_task(async function test_enabled() {
@@ -158,7 +162,7 @@ add_task(async function test_enabled() {
     engine.enabled = false;
     do_check_false(Svc.Prefs.get("engine.steam"));
   } finally {
-    Svc.Prefs.resetBranch("");
+    await cleanup(engine);
   }
 });
 
@@ -180,10 +184,7 @@ add_task(async function test_sync() {
     do_check_eq(engineObserver.topics[0], "weave:engine:sync:start");
     do_check_eq(engineObserver.topics[1], "weave:engine:sync:finish");
   } finally {
-    Svc.Prefs.resetBranch("");
-    engine.wasSynced = false;
-    engineObserver.reset();
-    engine._tracker.clearChangedIDs();
+    await cleanup(engine);
   }
 });
 
@@ -213,5 +214,5 @@ add_task(async function test_disabled_no_track() {
   do_check_false(tracker._isTracking);
   do_check_empty(tracker.changedIDs);
 
-  engine._tracker.clearChangedIDs();
+  await cleanup(engine);
 });

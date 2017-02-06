@@ -281,7 +281,7 @@ TaggingService.prototype = {
     try {
       while (stmt.executeStep()) {
         try {
-          uris.push(Services.io.newURI(stmt.row.url, null, null));
+          uris.push(Services.io.newURI(stmt.row.url));
         } catch (ex) {}
       }
     } finally {
@@ -611,7 +611,7 @@ TagAutoCompleteSearch.prototype = {
     // only search on characters for the last tag
     var index = Math.max(searchString.lastIndexOf(","),
       searchString.lastIndexOf(";"));
-    var before = '';
+    var before = "";
     if (index != -1) {
       before = searchString.slice(0, index + 1);
       searchString = searchString.slice(index + 1);

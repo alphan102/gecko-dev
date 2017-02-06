@@ -170,7 +170,8 @@ public:
 
   already_AddRefed<PledgeVoid>
   ApplyConstraints(nsPIDOMWindowInner* aWindow,
-                   const dom::MediaTrackConstraints& aConstraints) override;
+                   const dom::MediaTrackConstraints& aConstraints,
+                   dom::CallerType aCallerType) override;
 
   void Stop() override
   {
@@ -270,7 +271,8 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
 
   // Activate or remove ICE transports at the conclusion of offer/answer,
   // or when rollback occurs.
-  void ActivateOrRemoveTransports(const JsepSession& aSession);
+  void ActivateOrRemoveTransports(const JsepSession& aSession,
+                                  const bool forceIceTcp);
 
   // Start ICE checks.
   void StartIceChecks(const JsepSession& session);

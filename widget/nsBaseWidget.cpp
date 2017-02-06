@@ -12,6 +12,7 @@
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeChild.h"
+#include "LiveResizeListener.h"
 #include "nsBaseWidget.h"
 #include "nsDeviceContext.h"
 #include "nsCOMPtr.h"
@@ -55,6 +56,7 @@
 #include "mozilla/layers/APZEventState.h"
 #include "mozilla/layers/APZThreadUtils.h"
 #include "mozilla/layers/ChromeProcessController.h"
+#include "mozilla/layers/CompositorOptions.h"
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
 #include "mozilla/dom/ContentChild.h"
@@ -248,6 +250,7 @@ WidgetShutdownObserver::Unregister()
 void
 nsBaseWidget::Shutdown()
 {
+  NotifyLiveResizeStopped();
   RevokeTransactionIdAllocator();
   DestroyCompositor();
   FreeShutdownObserver();
@@ -348,7 +351,7 @@ nsBaseWidget::OnRenderingDeviceReset(uint64_t aSeqNo)
   // accelerated layers again.
   RefPtr<ClientLayerManager> clm = mLayerManager->AsClientLayerManager();
   if (!ComputeShouldAccelerate() &&
-      clm->GetTextureFactoryIdentifier().mParentBackend != LayersBackend::LAYERS_BASIC)
+      clm->GetCompositorBackendType() == LayersBackend::LAYERS_BASIC)
   {
     return;
   }
@@ -364,7 +367,7 @@ nsBaseWidget::OnRenderingDeviceReset(uint64_t aSeqNo)
   FrameLayerBuilder::InvalidateAllLayers(mLayerManager);
 
   // Update the texture factory identifier.
-  clm->UpdateTextureFactoryIdentifier(identifier);
+  clm->UpdateTextureFactoryIdentifier(identifier, aSeqNo);
   ImageBridgeChild::IdentifyCompositorTextureHost(identifier);
   gfx::VRManagerChild::IdentifyTextureHost(identifier);
 }
@@ -1297,20 +1300,20 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
 
   RefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
 
-  bool useAPZ = UseAPZ();
+  CompositorOptions options(UseAPZ());
 
   gfx::GPUProcessManager* gpu = gfx::GPUProcessManager::Get();
   mCompositorSession = gpu->CreateTopLevelCompositor(
     this,
     lm,
     GetDefaultScale(),
-    useAPZ,
+    options,
     UseExternalCompositingSurface(),
     gfx::IntSize(aWidth, aHeight));
   mCompositorBridgeChild = mCompositorSession->GetCompositorBridgeChild();
   mCompositorWidgetDelegate = mCompositorSession->GetCompositorWidgetDelegate();
 
-  if (useAPZ) {
+  if (options.UseAPZ()) {
     mAPZC = mCompositorSession->GetAPZCTreeManager();
     ConfigureAPZCTreeManager();
   } else {
@@ -1350,7 +1353,7 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
 
     lf->SetShadowManager(shadowManager);
     if (ClientLayerManager* clm = lm->AsClientLayerManager()) {
-      clm->UpdateTextureFactoryIdentifier(textureFactoryIdentifier);
+      clm->UpdateTextureFactoryIdentifier(textureFactoryIdentifier, 0);
     }
     // Some popup or transparent widgets may use a different backend than the
     // compositors used with ImageBridge and VR (and more generally web content).
@@ -2093,6 +2096,41 @@ nsBaseWidget::UpdateSynthesizedTouchState(MultiTouchInput* aState,
 }
 
 void
+nsBaseWidget::NotifyLiveResizeStarted()
+{
+  // If we have mLiveResizeListeners already non-empty, we should notify those
+  // listeners that the resize stopped before starting anew. In theory this
+  // should never happen because we shouldn't get nested live resize actions.
+  NotifyLiveResizeStopped();
+  MOZ_ASSERT(mLiveResizeListeners.IsEmpty());
+
+  // If we can get the active tab parent for the current widget, suppress
+  // the displayport on it during the live resize.
+  if (!mWidgetListener) {
+    return;
+  }
+  nsCOMPtr<nsIXULWindow> xulWindow = mWidgetListener->GetXULWindow();
+  if (!xulWindow) {
+    return;
+  }
+  mLiveResizeListeners = xulWindow->GetLiveResizeListeners();
+  for (uint32_t i = 0; i < mLiveResizeListeners.Length(); i++) {
+    mLiveResizeListeners[i]->LiveResizeStarted();
+  }
+}
+
+void
+nsBaseWidget::NotifyLiveResizeStopped()
+{
+  if (!mLiveResizeListeners.IsEmpty()) {
+    for (uint32_t i = 0; i < mLiveResizeListeners.Length(); i++) {
+      mLiveResizeListeners[i]->LiveResizeStopped();
+    }
+    mLiveResizeListeners.Clear();
+  }
+}
+
+void
 nsBaseWidget::RegisterPluginWindowForRemoteUpdates()
 {
 #if !defined(XP_WIN) && !defined(MOZ_WIDGET_GTK)
@@ -2209,7 +2247,7 @@ nsBaseWidget::CreateScrollCaptureContainer()
     return ImageContainer::sInvalidAsyncContainerId;
   }
 
-  return mScrollCaptureContainer->GetAsyncContainerID();
+  return mScrollCaptureContainer->GetAsyncContainerHandle().Value();
 }
 
 void

@@ -143,7 +143,13 @@ Module::serializedSize(size_t* maybeBytecodeSize, size_t* maybeCompiledSize) con
     if (maybeBytecodeSize)
         *maybeBytecodeSize = bytecode_->bytes.length();
 
-    if (maybeCompiledSize) {
+    // The compiled debug code must not be saved, set compiled size to 0,
+    // so Module::assumptionsMatch will return false during assumptions
+    // deserialization.
+    if (maybeCompiledSize && metadata_->debugEnabled)
+        *maybeCompiledSize = 0;
+
+    if (maybeCompiledSize && !metadata_->debugEnabled) {
         *maybeCompiledSize = assumptions_.serializedSize() +
                              SerializedPodVectorSize(code_) +
                              linkData_.serializedSize() +
@@ -174,7 +180,9 @@ Module::serialize(uint8_t* maybeBytecodeBegin, size_t maybeBytecodeSize,
         MOZ_RELEASE_ASSERT(bytecodeEnd == maybeBytecodeBegin + maybeBytecodeSize);
     }
 
-    if (maybeCompiledBegin) {
+    MOZ_ASSERT_IF(maybeCompiledBegin && metadata_->debugEnabled, maybeCompiledSize == 0);
+
+    if (maybeCompiledBegin && !metadata_->debugEnabled) {
         // Assumption must be serialized at the beginning of the compiled bytes so
         // that compiledAssumptionsMatch can detect a build-id mismatch before any
         // other decoding occurs.
@@ -481,8 +489,6 @@ Module::initSegments(JSContext* cx,
 
     for (const ElemSegment& seg : elemSegments_) {
         uint32_t numElems = seg.elemCodeRangeIndices.length();
-        if (!numElems)
-            continue;
 
         uint32_t tableLength = tables[seg.tableIndex]->length();
         uint32_t offset = EvaluateInitExpr(globalImports, seg.offset);
@@ -496,9 +502,6 @@ Module::initSegments(JSContext* cx,
 
     if (memoryObj) {
         for (const DataSegment& seg : dataSegments_) {
-            if (!seg.length)
-                continue;
-
             uint32_t memoryLength = memoryObj->buffer().byteLength();
             uint32_t offset = EvaluateInitExpr(globalImports, seg.offset);
 
@@ -885,15 +888,23 @@ Module::instantiate(JSContext* cx,
     // instance must hold onto a ref of the bytecode (keeping it alive). This
     // wastes memory for most users, so we try to only save the source when a
     // developer actually cares: when the compartment is debuggable (which is
-    // true when the web console is open) or a names section is present (since
-    // this going to be stripped for non-developer builds).
+    // true when the web console is open), has code compiled with debug flag
+    // enabled or a names section is present (since this going to be stripped
+    // for non-developer builds).
 
     const ShareableBytes* maybeBytecode = nullptr;
-    if (cx->compartment()->isDebuggee() || !metadata_->funcNames.empty())
+    if (cx->compartment()->isDebuggee() || metadata_->debugEnabled ||
+        !metadata_->funcNames.empty())
+    {
         maybeBytecode = bytecode_.get();
+    }
 
     auto codeSegment = CodeSegment::create(cx, code_, linkData_, *metadata_, memory);
     if (!codeSegment)
+        return false;
+
+    auto globalSegment = GlobalSegment::create(linkData_.globalDataLength);
+    if (!globalSegment)
         return false;
 
     auto code = cx->make_unique<Code>(Move(codeSegment), *metadata_, maybeBytecode);
@@ -902,6 +913,7 @@ Module::instantiate(JSContext* cx,
 
     instance.set(WasmInstanceObject::create(cx,
                                             Move(code),
+                                            Move(globalSegment),
                                             memory,
                                             Move(tables),
                                             funcImports,

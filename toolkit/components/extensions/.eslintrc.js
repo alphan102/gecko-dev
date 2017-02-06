@@ -30,8 +30,7 @@ module.exports = { // eslint-disable-line no-undef
     "runSafeSync": true,
     "runSafeSyncWithoutClone": true,
     "Services": true,
-    "TabManager": true,
-    "WindowListManager": true,
+    "tabTracker": false,
     "XPCOMUtils": true,
   },
 
@@ -247,7 +246,7 @@ module.exports = { // eslint-disable-line no-undef
     "comma-dangle": ["error", "always-multiline"],
 
     // Warn about cyclomatic complexity in functions.
-    "complexity": "warn",
+    "complexity": "error",
 
     // Don't warn for inconsistent naming when capturing this (not so important
     // with auto-binding fat arrow functions).

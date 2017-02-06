@@ -348,16 +348,17 @@ WebGLContext::DeleteFramebuffer(WebGLFramebuffer* fbuf)
 void
 WebGLContext::DeleteRenderbuffer(WebGLRenderbuffer* rbuf)
 {
-    if (!ValidateDeleteObject("deleteRenderbuffer", rbuf))
+    const char funcName[] = "deleteRenderbuffer";
+    if (!ValidateDeleteObject(funcName, rbuf))
         return;
 
     if (mBoundDrawFramebuffer)
-        mBoundDrawFramebuffer->DetachRenderbuffer(rbuf);
+        mBoundDrawFramebuffer->DetachRenderbuffer(funcName, rbuf);
 
     if (mBoundReadFramebuffer)
-        mBoundReadFramebuffer->DetachRenderbuffer(rbuf);
+        mBoundReadFramebuffer->DetachRenderbuffer(funcName, rbuf);
 
-    rbuf->InvalidateStatusOfAttachedFBs();
+    rbuf->InvalidateStatusOfAttachedFBs(funcName);
 
     if (mBoundRenderbuffer == rbuf)
         BindRenderbuffer(LOCAL_GL_RENDERBUFFER, nullptr);
@@ -368,14 +369,15 @@ WebGLContext::DeleteRenderbuffer(WebGLRenderbuffer* rbuf)
 void
 WebGLContext::DeleteTexture(WebGLTexture* tex)
 {
-    if (!ValidateDeleteObject("deleteTexture", tex))
+    const char funcName[] = "deleteTexture";
+    if (!ValidateDeleteObject(funcName, tex))
         return;
 
     if (mBoundDrawFramebuffer)
-        mBoundDrawFramebuffer->DetachTexture(tex);
+        mBoundDrawFramebuffer->DetachTexture(funcName, tex);
 
     if (mBoundReadFramebuffer)
-        mBoundReadFramebuffer->DetachTexture(tex);
+        mBoundReadFramebuffer->DetachTexture(funcName, tex);
 
     GLuint activeTexture = mActiveTexture;
     for (int32_t i = 0; i < mGLMaxTextureUnits; i++) {
@@ -1241,17 +1243,18 @@ GetJSScalarFromGLType(GLenum type, js::Scalar::Type* const out_scalarType)
 }
 
 bool
-WebGLContext::ReadPixels_SharedPrecheck(ErrorResult* const out_error)
+WebGLContext::ReadPixels_SharedPrecheck(CallerType aCallerType,
+                                        ErrorResult& out_error)
 {
     if (IsContextLost())
         return false;
 
     if (mCanvasElement &&
         mCanvasElement->IsWriteOnly() &&
-        !nsContentUtils::IsCallerChrome())
+        aCallerType != CallerType::System)
     {
         GenerateWarning("readPixels: Not allowed");
-        out_error->Throw(NS_ERROR_DOM_SECURITY_ERR);
+        out_error.Throw(NS_ERROR_DOM_SECURITY_ERR);
         return false;
     }
 
@@ -1304,10 +1307,11 @@ WebGLContext::ValidatePackSize(const char* funcName, uint32_t width, uint32_t he
 void
 WebGLContext::ReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format,
                          GLenum type, const dom::ArrayBufferView& dstView,
-                         GLuint dstElemOffset, ErrorResult& out_error)
+                         GLuint dstElemOffset, CallerType aCallerType,
+                         ErrorResult& out_error)
 {
     const char funcName[] = "readPixels";
-    if (!ReadPixels_SharedPrecheck(&out_error))
+    if (!ReadPixels_SharedPrecheck(aCallerType, out_error))
         return;
 
     if (mBoundPixelPackBuffer) {
@@ -1343,10 +1347,11 @@ WebGLContext::ReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum
 
 void
 WebGLContext::ReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format,
-                         GLenum type, WebGLsizeiptr offset, ErrorResult& out_error)
+                         GLenum type, WebGLsizeiptr offset,
+                         CallerType aCallerType, ErrorResult& out_error)
 {
     const char funcName[] = "readPixels";
-    if (!ReadPixels_SharedPrecheck(&out_error))
+    if (!ReadPixels_SharedPrecheck(aCallerType, out_error))
         return;
 
     const auto& buffer = ValidateBufferSelection(funcName, LOCAL_GL_PIXEL_PACK_BUFFER);
@@ -2139,6 +2144,9 @@ WebGLContext::Viewport(GLint x, GLint y, GLsizei width, GLsizei height)
 
     if (width < 0 || height < 0)
         return ErrorInvalidValue("viewport: negative size");
+
+    width = std::min(width, (GLsizei)mImplMaxViewportDims[0]);
+    height = std::min(height, (GLsizei)mImplMaxViewportDims[1]);
 
     MakeContextCurrent();
     gl->fViewport(x, y, width, height);

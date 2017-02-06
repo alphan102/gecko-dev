@@ -45,8 +45,7 @@
 #include "nsINetworkPredictorVerifier.h"
 #include "nsISpeculativeConnect.h"
 
-using mozilla::DocShellOriginAttributes;
-using mozilla::NeckoOriginAttributes;
+using mozilla::OriginAttributes;
 using mozilla::dom::ChromeUtils;
 using mozilla::dom::ContentParent;
 using mozilla::dom::TabContext;
@@ -158,13 +157,13 @@ const char*
 NeckoParent::GetValidatedOriginAttributes(const SerializedLoadContext& aSerialized,
                                           PContentParent* aContent,
                                           nsIPrincipal* aRequestingPrincipal,
-                                          DocShellOriginAttributes& aAttrs)
+                                          OriginAttributes& aAttrs)
 {
   if (!UsingNeckoIPCSecurity()) {
     if (!aSerialized.IsNotNull()) {
       // If serialized is null, we cannot validate anything. We have to assume
       // that this requests comes from a SystemPrincipal.
-      aAttrs = DocShellOriginAttributes(NECKO_NO_APP_ID, false);
+      aAttrs = OriginAttributes(NECKO_NO_APP_ID, false);
     } else {
       aAttrs = aSerialized.mOriginAttributes;
     }
@@ -237,7 +236,7 @@ NeckoParent::CreateChannelLoadContext(const PBrowserOrId& aBrowser,
                                       nsIPrincipal* aRequestingPrincipal,
                                       nsCOMPtr<nsILoadContext> &aResult)
 {
-  DocShellOriginAttributes attrs;
+  OriginAttributes attrs;
   const char* error = GetValidatedOriginAttributes(aSerialized, aContent,
                                                    aRequestingPrincipal, attrs);
   if (error) {
@@ -824,21 +823,11 @@ mozilla::ipc::IPCResult
 NeckoParent::RecvPredPredict(const ipc::OptionalURIParams& aTargetURI,
                              const ipc::OptionalURIParams& aSourceURI,
                              const uint32_t& aReason,
-                             const SerializedLoadContext& aLoadContext,
+                             const OriginAttributes& aOriginAttributes,
                              const bool& hasVerifier)
 {
   nsCOMPtr<nsIURI> targetURI = DeserializeURI(aTargetURI);
   nsCOMPtr<nsIURI> sourceURI = DeserializeURI(aSourceURI);
-
-  // We only actually care about the loadContext.mPrivateBrowsing, so we'll just
-  // pass dummy params for nestFrameId, and originAttributes.
-  uint64_t nestedFrameId = 0;
-  DocShellOriginAttributes attrs(NECKO_UNKNOWN_APP_ID, false);
-  nsCOMPtr<nsILoadContext> loadContext;
-  if (aLoadContext.IsNotNull()) {
-    attrs.SyncAttributesWithPrivateBrowsing(aLoadContext.mOriginAttributes.mPrivateBrowsingId > 0);
-    loadContext = new LoadContext(aLoadContext, nestedFrameId, attrs);
-  }
 
   // Get the current predictor
   nsresult rv = NS_OK;
@@ -850,7 +839,7 @@ NeckoParent::RecvPredPredict(const ipc::OptionalURIParams& aTargetURI,
   if (hasVerifier) {
     verifier = do_QueryInterface(predictor);
   }
-  predictor->Predict(targetURI, sourceURI, aReason, loadContext, verifier);
+  predictor->PredictNative(targetURI, sourceURI, aReason, aOriginAttributes, verifier);
   return IPC_OK();
 }
 
@@ -858,20 +847,10 @@ mozilla::ipc::IPCResult
 NeckoParent::RecvPredLearn(const ipc::URIParams& aTargetURI,
                            const ipc::OptionalURIParams& aSourceURI,
                            const uint32_t& aReason,
-                           const SerializedLoadContext& aLoadContext)
+                           const OriginAttributes& aOriginAttributes)
 {
   nsCOMPtr<nsIURI> targetURI = DeserializeURI(aTargetURI);
   nsCOMPtr<nsIURI> sourceURI = DeserializeURI(aSourceURI);
-
-  // We only actually care about the loadContext.mPrivateBrowsing, so we'll just
-  // pass dummy params for nestFrameId, and originAttributes;
-  uint64_t nestedFrameId = 0;
-  DocShellOriginAttributes attrs(NECKO_UNKNOWN_APP_ID, false);
-  nsCOMPtr<nsILoadContext> loadContext;
-  if (aLoadContext.IsNotNull()) {
-    attrs.SyncAttributesWithPrivateBrowsing(aLoadContext.mOriginAttributes.mPrivateBrowsingId > 0);
-    loadContext = new LoadContext(aLoadContext, nestedFrameId, attrs);
-  }
 
   // Get the current predictor
   nsresult rv = NS_OK;
@@ -879,7 +858,7 @@ NeckoParent::RecvPredLearn(const ipc::URIParams& aTargetURI,
     do_GetService("@mozilla.org/network/predictor;1", &rv);
   NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
 
-  predictor->Learn(targetURI, sourceURI, aReason, loadContext);
+  predictor->LearnNative(targetURI, sourceURI, aReason, aOriginAttributes);
   return IPC_OK();
 }
 

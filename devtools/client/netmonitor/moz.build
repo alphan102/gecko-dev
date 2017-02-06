@@ -16,7 +16,6 @@ DIRS += [
 DevToolsModules(
     'constants.js',
     'custom-request-view.js',
-    'details-view.js',
     'events.js',
     'filter-predicates.js',
     'l10n.js',
@@ -29,10 +28,11 @@ DevToolsModules(
     'requests-menu-view.js',
     'sidebar-view.js',
     'sort-predicates.js',
-    'statistics-view.js',
     'store.js',
-    'toolbar-view.js',
     'waterfall-background.js',
 )
 
 BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
+
+with Files('**'):
+    BUG_COMPONENT = ('Firefox', 'Developer Tools: Netmonitor')

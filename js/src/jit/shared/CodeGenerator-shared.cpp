@@ -1055,7 +1055,7 @@ CodeGeneratorShared::verifyCompactTrackedOptimizationsMap(JitCode* code, uint32_
             // decoded. This is disabled for now if the types table might
             // contain nursery pointers, in which case the types might not
             // match, see bug 1175761.
-            if (!code->runtimeFromMainThread()->gc.storeBuffer.cancelIonCompilations()) {
+            if (!code->zone()->group()->storeBuffer().cancelIonCompilations()) {
                 IonTrackedOptimizationsTypeInfo typeInfo = typesTable->entry(index);
                 TempOptimizationTypeInfoVector tvec(alloc());
                 ReadTempTypeInfoVectorOp top(alloc(), &tvec);
@@ -1290,8 +1290,8 @@ CodeGeneratorShared::verifyOsiPointRegs(LSafepoint* safepoint)
     // forces them to have an osi point associated with them.  The
     // FunctionBoundary for inline function entry is added to the caller's
     // graph with a PC from the caller's code, but during codegen it modifies
-    // SPS instrumentation to add the callee as the current top-most script.
-    // When codegen gets to the OSIPoint, and the callWithABI below is
+    // Gecko Profiler instrumentation to add the callee as the current top-most
+    // script. When codegen gets to the OSIPoint, and the callWithABI below is
     // emitted, the codegen thinks that the current frame is the callee, but
     // the PC it's using from the OSIPoint refers to the caller.  This causes
     // the profiler instrumentation of the callWithABI below to ASSERT, since
@@ -1536,6 +1536,104 @@ CodeGeneratorShared::emitWasmCallBase(LWasmCallBase* ins)
 }
 
 void
+CodeGeneratorShared::visitWasmLoadGlobalVar(LWasmLoadGlobalVar* ins)
+{
+    MWasmLoadGlobalVar* mir = ins->mir();
+
+    MIRType type = mir->type();
+    MOZ_ASSERT(IsNumberType(type) || IsSimdType(type));
+
+    Register tls = ToRegister(ins->tlsPtr());
+    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
+    switch (type) {
+      case MIRType::Int32:
+        masm.load32(addr, ToRegister(ins->output()));
+        break;
+      case MIRType::Float32:
+        masm.loadFloat32(addr, ToFloatRegister(ins->output()));
+        break;
+      case MIRType::Double:
+        masm.loadDouble(addr, ToFloatRegister(ins->output()));
+        break;
+      // Aligned access: code is aligned on PageSize + there is padding
+      // before the global data section.
+      case MIRType::Int8x16:
+      case MIRType::Int16x8:
+      case MIRType::Int32x4:
+      case MIRType::Bool8x16:
+      case MIRType::Bool16x8:
+      case MIRType::Bool32x4:
+        masm.loadInt32x4(addr, ToFloatRegister(ins->output()));
+        break;
+      case MIRType::Float32x4:
+        masm.loadFloat32x4(addr, ToFloatRegister(ins->output()));
+        break;
+      default:
+        MOZ_CRASH("unexpected type in visitWasmLoadGlobalVar");
+    }
+}
+
+void
+CodeGeneratorShared::visitWasmStoreGlobalVar(LWasmStoreGlobalVar* ins)
+{
+    MWasmStoreGlobalVar* mir = ins->mir();
+
+    MIRType type = mir->value()->type();
+    MOZ_ASSERT(IsNumberType(type) || IsSimdType(type));
+
+    Register tls = ToRegister(ins->tlsPtr());
+    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
+    switch (type) {
+      case MIRType::Int32:
+        masm.store32(ToRegister(ins->value()), addr);
+        break;
+      case MIRType::Float32:
+        masm.storeFloat32(ToFloatRegister(ins->value()), addr);
+        break;
+      case MIRType::Double:
+        masm.storeDouble(ToFloatRegister(ins->value()), addr);
+        break;
+      // Aligned access: code is aligned on PageSize + there is padding
+      // before the global data section.
+      case MIRType::Int32x4:
+      case MIRType::Bool32x4:
+        masm.storeInt32x4(ToFloatRegister(ins->value()), addr);
+        break;
+      case MIRType::Float32x4:
+        masm.storeFloat32x4(ToFloatRegister(ins->value()), addr);
+        break;
+      default:
+        MOZ_CRASH("unexpected type in visitWasmStoreGlobalVar");
+    }
+}
+
+void
+CodeGeneratorShared::visitWasmLoadGlobalVarI64(LWasmLoadGlobalVarI64* ins)
+{
+    MWasmLoadGlobalVar* mir = ins->mir();
+    MOZ_ASSERT(mir->type() == MIRType::Int64);
+
+    Register tls = ToRegister(ins->tlsPtr());
+    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
+
+    Register64 output = ToOutRegister64(ins);
+    masm.load64(addr, output);
+}
+
+void
+CodeGeneratorShared::visitWasmStoreGlobalVarI64(LWasmStoreGlobalVarI64* ins)
+{
+    MWasmStoreGlobalVar* mir = ins->mir();
+    MOZ_ASSERT(mir->value()->type() == MIRType::Int64);
+
+    Register tls = ToRegister(ins->tlsPtr());
+    Address addr(tls, offsetof(wasm::TlsData, globalArea) + mir->globalDataOffset());
+
+    Register64 value = ToRegister64(ins->value());
+    masm.store64(value, addr);
+}
+
+void
 CodeGeneratorShared::emitPreBarrier(Register base, const LAllocation* index, int32_t offsetAdjustment)
 {
     if (index->isConstant()) {
@@ -1646,26 +1744,6 @@ CodeGeneratorShared::jumpToBlock(MBasicBlock* mir, Assembler::Condition cond)
     }
 }
 #endif
-
-MOZ_MUST_USE bool
-CodeGeneratorShared::addCacheLocations(const CacheLocationList& locs, size_t* numLocs,
-                                       size_t* curIndex)
-{
-    size_t firstIndex = runtimeData_.length();
-    size_t numLocations = 0;
-    for (CacheLocationList::iterator iter = locs.begin(); iter != locs.end(); iter++) {
-        // allocateData() ensures that sizeof(CacheLocation) is word-aligned.
-        // If this changes, we will need to pad to ensure alignment.
-        if (!allocateData(sizeof(CacheLocation), curIndex))
-            return false;
-        new (&runtimeData_[*curIndex]) CacheLocation(iter->pc, iter->script);
-        numLocations++;
-    }
-    MOZ_ASSERT(numLocations != 0);
-    *numLocs = numLocations;
-    *curIndex = firstIndex;
-    return true;
-}
 
 ReciprocalMulConstants
 CodeGeneratorShared::computeDivisionConstants(uint32_t d, int maxLog) {

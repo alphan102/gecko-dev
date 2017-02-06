@@ -15,6 +15,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "SelectContentHelper",
+  "resource://gre/modules/SelectContentHelper.jsm");
 
 var global = this;
 
@@ -68,7 +70,7 @@ var ClickEventHandler = {
 
   findNearestScrollableElement(aNode) {
     // this is a list of overflow property values that allow scrolling
-    const scrollingAllowed = ['scroll', 'auto'];
+    const scrollingAllowed = ["scroll", "auto"];
 
     // go upward in the DOM and find any parent element that has a overflow
     // area and can therefore be scrolled
@@ -82,12 +84,12 @@ var ClickEventHandler = {
         continue;
       }
 
-      var overflowx = this._scrollable.ownerDocument.defaultView
-                          .getComputedStyle(this._scrollable, '')
-                          .getPropertyValue('overflow-x');
-      var overflowy = this._scrollable.ownerDocument.defaultView
-                          .getComputedStyle(this._scrollable, '')
-                          .getPropertyValue('overflow-y');
+      var overflowx = this._scrollable.ownerGlobal
+                          .getComputedStyle(this._scrollable)
+                          .getPropertyValue("overflow-x");
+      var overflowy = this._scrollable.ownerGlobal
+                          .getComputedStyle(this._scrollable)
+                          .getPropertyValue("overflow-y");
       // we already discarded non-multiline selects so allow vertical
       // scroll for multiline ones directly without checking for a
       // overflow property
@@ -109,7 +111,7 @@ var ClickEventHandler = {
     }
 
     if (!this._scrollable) {
-      this._scrollable = aNode.ownerDocument.defaultView;
+      this._scrollable = aNode.ownerGlobal;
       if (this._scrollable.scrollMaxX != this._scrollable.scrollMinX) {
         this._scrolldir = this._scrollable.scrollMaxY !=
                           this._scrollable.scrollMinY ? "NSEW" : "EW";
@@ -199,13 +201,13 @@ var ClickEventHandler = {
     var actualScrollY = 0;
     // don't bother scrolling vertically when the scrolldir is only horizontal
     // and the other way around
-    if (this._scrolldir != 'EW') {
+    if (this._scrolldir != "EW") {
       var y = this.accelerate(this._screenY, this._startY) * timeCompensation;
       var desiredScrollY = this._scrollErrorY + y;
       actualScrollY = this.roundToZero(desiredScrollY);
       this._scrollErrorY = (desiredScrollY - actualScrollY);
     }
-    if (this._scrolldir != 'NS') {
+    if (this._scrolldir != "NS") {
       var x = this.accelerate(this._screenX, this._startX) * timeCompensation;
       var desiredScrollX = this._scrollErrorX + x;
       actualScrollX = this.roundToZero(desiredScrollX);
@@ -420,8 +422,8 @@ var Printing = {
   },
 
   get shouldSavePrintSettings() {
-    return Services.prefs.getBoolPref("print.use_global_printsettings", false) &&
-           Services.prefs.getBoolPref("print.save_print_settings", false);
+    return Services.prefs.getBoolPref("print.use_global_printsettings") &&
+           Services.prefs.getBoolPref("print.save_print_settings");
   },
 
   handleEvent(event) {
@@ -605,7 +607,7 @@ var Printing = {
       readerContent.setAttribute("id", "moz-reader-content");
       contentElement.appendChild(readerContent);
 
-      let articleUri = Services.io.newURI(article.url, null, null);
+      let articleUri = Services.io.newURI(article.url);
       let parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
       let contentFragment = parserUtils.parseFragment(article.content,
         Ci.nsIParserUtils.SanitizerDropForms | Ci.nsIParserUtils.SanitizerAllowStyle,
@@ -897,7 +899,7 @@ let WebChannelMessageToChromeListener = {
     let principal = e.target.nodePrincipal ? e.target.nodePrincipal : e.target.document.nodePrincipal;
 
     if (e.detail) {
-      if (typeof e.detail != 'string') {
+      if (typeof e.detail != "string") {
         // Check if the principal is one of the ones that's allowed to send
         // non-string values for e.detail.  They're whitelisted by site origin,
         // so we compare on originNoSuffix in order to avoid other origin attributes
@@ -934,7 +936,7 @@ addMessageListener("WebChannelMessageToContent", function(e) {
     if (e.principal.subsumes(targetPrincipal)) {
       // If eventTarget is a window, use it as the targetWindow, otherwise
       // find the window that owns the eventTarget.
-      let targetWindow = eventTarget instanceof Ci.nsIDOMWindow ? eventTarget : eventTarget.ownerDocument.defaultView;
+      let targetWindow = eventTarget instanceof Ci.nsIDOMWindow ? eventTarget : eventTarget.ownerGlobal;
 
       eventTarget.dispatchEvent(new targetWindow.CustomEvent("WebChannelMessageToContent", {
         detail: Cu.cloneInto({
@@ -1014,8 +1016,10 @@ var AudioPlaybackListener = {
     if (topic === "audio-playback") {
       if (subject && subject.top == global.content) {
         let name = "AudioPlayback:";
-        if (data === "block") {
-          name += "Block";
+        if (data === "blockStart") {
+          name += "BlockStart";
+        } else if (data === "blockStop") {
+          name += "BlockStop";
         } else {
           name += (data === "active") ? "Start" : "Stop";
         }
@@ -1238,7 +1242,7 @@ var ViewSelectionSource = {
    *        Some element within the fragment of interest.
    */
   getMathMLSelection(node) {
-    var Node = node.ownerDocument.defaultView.Node;
+    var Node = node.ownerGlobal.Node;
     this._lineCount = 0;
     this._startTargetLine = 0;
     this._endTargetLine = 0;
@@ -1261,21 +1265,21 @@ var ViewSelectionSource = {
 
     let bundle = Services.strings.createBundle(BUNDLE_URL);
     var title = bundle.GetStringFromName("viewMathMLSourceTitle");
-    var wrapClass = this.wrapLongLines ? ' class="wrap"' : '';
+    var wrapClass = this.wrapLongLines ? ' class="wrap"' : "";
     var source =
-      '<!DOCTYPE html>'
-    + '<html>'
-    + '<head><title>' + title + '</title>'
+      "<!DOCTYPE html>"
+    + "<html>"
+    + "<head><title>" + title + "</title>"
     + '<link rel="stylesheet" type="text/css" href="' + VIEW_SOURCE_CSS + '">'
     + '<style type="text/css">'
-    + '#target { border: dashed 1px; background-color: lightyellow; }'
-    + '</style>'
-    + '</head>'
+    + "#target { border: dashed 1px; background-color: lightyellow; }"
+    + "</style>"
+    + "</head>"
     + '<body id="viewsource"' + wrapClass
     + ' onload="document.title=\'' + title + '\'; document.getElementById(\'target\').scrollIntoView(true)">'
-    + '<pre>'
+    + "<pre>"
     + this.getOuterMarkup(topNode, 0)
-    + '</pre></body></html>'
+    + "</pre></body></html>"
     ; // end
 
     return { uri: "data:text/html;charset=utf-8," + encodeURIComponent(source),
@@ -1287,7 +1291,7 @@ var ViewSelectionSource = {
   },
 
   getInnerMarkup(node, indent) {
-    var str = '';
+    var str = "";
     for (var i = 0; i < node.childNodes.length; i++) {
       str += this.getOuterMarkup(node.childNodes.item(i), indent);
     }
@@ -1295,7 +1299,7 @@ var ViewSelectionSource = {
   },
 
   getOuterMarkup(node, indent) {
-    var Node = node.ownerDocument.defaultView.Node;
+    var Node = node.ownerGlobal.Node;
     var newline = "";
     var padding = "";
     var str = "";
@@ -1318,7 +1322,7 @@ var ViewSelectionSource = {
         padding += " ";
       }
       str += newline + padding
-          + '&lt;<span class="start-tag">' + node.nodeName + '</span>';
+          + '&lt;<span class="start-tag">' + node.nodeName + "</span>";
       for (var i = 0; i < node.attributes.length; i++) {
         var attr = node.attributes.item(i);
         if (attr.nodeName.match(/^[-_]moz/)) {
@@ -1344,7 +1348,7 @@ var ViewSelectionSource = {
           this._lineCount++;
         }
         str += newline + padding
-            + '&lt;/<span class="end-tag">' + node.nodeName + '</span>&gt;';
+            + '&lt;/<span class="end-tag">' + node.nodeName + "</span>&gt;";
       }
       break;
     case Node.TEXT_NODE: // Text
@@ -1353,7 +1357,7 @@ var ViewSelectionSource = {
       tmp = tmp.replace(/^ +/, "");
       tmp = tmp.replace(/ +$/, "");
       if (tmp.length != 0) {
-        str += '<span class="text">' + this.unicodeToEntity(tmp) + '</span>';
+        str += '<span class="text">' + this.unicodeToEntity(tmp) + "</span>";
       }
       break;
     default:
@@ -1362,16 +1366,16 @@ var ViewSelectionSource = {
 
     if (node == this._targetNode) {
       this._endTargetLine = this._lineCount;
-      str += '</pre><pre>';
+      str += "</pre><pre>";
     }
     return str;
   },
 
   unicodeToEntity(text) {
     const charTable = {
-      '&': '&amp;<span class="entity">amp;</span>',
-      '<': '&amp;<span class="entity">lt;</span>',
-      '>': '&amp;<span class="entity">gt;</span>',
+      "&": '&amp;<span class="entity">amp;</span>',
+      "<": '&amp;<span class="entity">lt;</span>',
+      ">": '&amp;<span class="entity">gt;</span>',
       '"': '&amp;<span class="entity">quot;</span>'
     };
 
@@ -1384,7 +1388,7 @@ var ViewSelectionSource = {
         var unichar = this._entityConverter
                           .ConvertToEntity(letter, entityVersion);
         var entity = unichar.substring(1); // extract '&'
-        return '&amp;<span class="entity">' + entity + '</span>';
+        return '&amp;<span class="entity">' + entity + "</span>";
       } catch (ex) {
         return letter;
       }
@@ -1544,7 +1548,7 @@ let AutoCompletePopup = {
     }
 
     let rect = BrowserUtils.getElementBoundingScreenRect(element);
-    let window = element.ownerDocument.defaultView;
+    let window = element.ownerGlobal;
     let dir = window.getComputedStyle(element).direction;
     let results = this.getResultsFromController(input);
 
@@ -1665,7 +1669,7 @@ let DateTimePickerListener = {
    * Helper function that returns the CSS direction property of the element.
    */
   getComputedDirection(aElement) {
-    return aElement.ownerDocument.defaultView.getComputedStyle(aElement)
+    return aElement.ownerGlobal.getComputedStyle(aElement)
       .getPropertyValue("direction");
   },
 
@@ -1734,6 +1738,7 @@ let DateTimePickerListener = {
       }
       case "MozUpdateDateTimePicker": {
         let value = this._inputElement.getDateTimeInputBoxValue();
+        value.type = this._inputElement.type;
         sendAsyncMessage("FormDateTime:UpdatePicker", { value });
         break;
       }
@@ -1825,3 +1830,22 @@ let TelemetryScrollTracker = {
 };
 
 TelemetryScrollTracker.init();
+
+addEventListener("mozshowdropdown", event => {
+  if (!event.isTrusted)
+    return;
+
+  if (!SelectContentHelper.open) {
+    new SelectContentHelper(event.target, {isOpenedViaTouch: false}, this);
+  }
+});
+
+addEventListener("mozshowdropdown-sourcetouch", event => {
+  if (!event.isTrusted)
+    return;
+
+  if (!SelectContentHelper.open) {
+    new SelectContentHelper(event.target, {isOpenedViaTouch: true}, this);
+  }
+});
+

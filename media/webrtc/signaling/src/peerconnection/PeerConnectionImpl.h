@@ -711,7 +711,9 @@ private:
                                       const std::string& candidate);
 
   nsresult GetDatachannelParameters(
-      const mozilla::JsepApplicationCodecDescription** codec,
+      uint32_t* channels,
+      uint16_t* localport,
+      uint16_t* remoteport,
       uint16_t* level) const;
 
   static void DeferredAddTrackToJsepSession(const std::string& pcHandle,
@@ -813,6 +815,7 @@ private:
 
   bool mAllowIceLoopback;
   bool mAllowIceLinkLocal;
+  bool mForceIceTcp;
   RefPtr<PeerConnectionMedia> mMedia;
 
   // The JSEP negotiation session.

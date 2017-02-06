@@ -784,14 +784,16 @@ StyleAnimationValue::Add(nsCSSPropertyID aProperty,
     case eUnit_Shadow: {
       // If |aA| has no function list, don't concatinate anything, just return
       // |aB| as the result.
-      if (aA.GetCSSValueListValue()->mValue.GetUnit() == eCSSUnit_None) {
+      if (!aA.GetCSSValueListValue() ||
+          aA.GetCSSValueListValue()->mValue.GetUnit() == eCSSUnit_None) {
         break;
       }
       UniquePtr<nsCSSValueList> resultList(aA.GetCSSValueListValue()->Clone());
 
       // If |aB| has function list, concatinate it to |aA|, then return
       // the concatinated list.
-      if (result.GetCSSValueListValue()->mValue.GetUnit() != eCSSUnit_None) {
+      if (result.GetCSSValueListValue() &&
+          result.GetCSSValueListValue()->mValue.GetUnit() != eCSSUnit_None) {
         nsCSSValueList* listA = resultList.get();
         while (listA->mNext) {
           listA = listA->mNext;
@@ -1373,14 +1375,11 @@ ComputeTransformDistance(nsCSSValue::Array* aArray1,
       // Therefore, we use the same rule to get the distance as what we do for
       // matrix3d.
 
-      auto clampPerspectiveDepth = [](float aDepth) {
-        // Perspective depth should be positive non-zero value.
-        return std::max(aDepth, std::numeric_limits<float>::epsilon());
-      };
+      using nsStyleTransformMatrix::ApplyPerspectiveToMatrix;
       Matrix4x4 m1;
-      m1.Perspective(clampPerspectiveDepth(a1->Item(1).GetFloatValue()));
+      ApplyPerspectiveToMatrix(m1, a1->Item(1).GetFloatValue());
       Matrix4x4 m2;
-      m2.Perspective(clampPerspectiveDepth(a2->Item(1).GetFloatValue()));
+      ApplyPerspectiveToMatrix(m2, a2->Item(1).GetFloatValue());
 
       distance = ComputeTransform3DMatrixDistance(m1, m2);
       break;

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* eslint-disable react/prop-types */
+
 "use strict";
 
 const {
@@ -10,8 +12,10 @@ const {
   DOM,
   PropTypes,
 } = require("devtools/client/shared/vendor/react");
-const { createFactories } = require("devtools/client/shared/components/reps/rep-utils");
-const { MODE } = require("devtools/client/shared/components/reps/constants");
+
+const { REPS, MODE } = require("devtools/client/shared/components/reps/load-reps");
+const Rep = createFactory(REPS.Rep);
+
 const { FILTER_SEARCH_DELAY } = require("../../constants");
 
 // Components
@@ -19,9 +23,11 @@ const Editor = createFactory(require("devtools/client/netmonitor/shared/componen
 const SearchBox = createFactory(require("devtools/client/shared/components/search-box"));
 const TreeView = createFactory(require("devtools/client/shared/components/tree/tree-view"));
 const TreeRow = createFactory(require("devtools/client/shared/components/tree/tree-row"));
-const { Rep } = createFactories(require("devtools/client/shared/components/reps/rep"));
 
 const { div, tr, td } = DOM;
+const AUTO_EXPAND_MAX_LEVEL = 7;
+const AUTO_EXPAND_MAX_NODES = 50;
+const EDITOR_CONFIG_ID = "EDITOR_CONFIG";
 
 /*
  * Properties View component
@@ -30,7 +36,7 @@ const { div, tr, td } = DOM;
  *
  * Search filter - Set enableFilter to enable / disable SearchBox feature.
  * Tree view - Default enabled.
- * Source editor - Enable by specifying object level 1 property name to "editorText".
+ * Source editor - Enable by specifying object level 1 property name to EDITOR_CONFIG_ID.
  * Rep - Default enabled.
  */
 const PropertiesView = createClass({
@@ -50,6 +56,7 @@ const PropertiesView = createClass({
       enableFilter: true,
       expandableStrings: false,
       filterPlaceHolder: "",
+      sectionNames: [],
     };
   },
 
@@ -76,34 +83,51 @@ const PropertiesView = createClass({
   },
 
   renderRowWithEditor(props) {
-    const { level, name, value } = props.member;
-    // Display source editor when prop name specify to editorText
-    if (level === 1 && name === "editorText") {
+    const { level, name, value, path } = props.member;
+
+    // Display source editor when specifying to EDITOR_CONFIG_ID along with config
+    if (level === 1 && name === EDITOR_CONFIG_ID) {
       return (
-        tr({},
+        tr({ className: "editor-row-container" },
           td({ colSpan: 2 },
-            Editor({ text: value })
+            Editor(value)
           )
         )
       );
+    }
+
+    // Skip for editor config
+    if (level >= 1 && path.includes(EDITOR_CONFIG_ID)) {
+      return null;
     }
 
     return TreeRow(props);
   },
 
   renderValueWithRep(props) {
-    // Hide rep summary for sections
-    if (props.member.level === 0) {
+    const { member } = props;
+
+    // Hide strings with following conditions
+    // 1. this row is a togglable section
+    // 2. the `value` object has a `value` property, only happend in Cookies panel
+    // Put 2 here to not dup this method
+    if (member.level === 0 ||
+      (typeof member.value === "object" && member.value && member.value.value)) {
       return null;
     }
 
     return Rep(Object.assign(props, {
       // FIXME: A workaround for the issue in StringRep
       // Force StringRep to crop the text everytime
-      member: Object.assign({}, props.member, { open: false }),
+      member: Object.assign({}, member, { open: false }),
       mode: MODE.TINY,
       cropLimit: 60,
     }));
+  },
+
+  shouldRenderSearchBox(object) {
+    return this.props.enableFilter && object && Object.keys(object)
+      .filter((section) => !object[section][EDITOR_CONFIG_ID]).length > 0;
   },
 
   updateFilterText(filterText) {
@@ -112,14 +136,45 @@ const PropertiesView = createClass({
     });
   },
 
+  getExpandedNodes: function (object, path = "", level = 0) {
+    if (typeof object != "object") {
+      return null;
+    }
+
+    if (level > AUTO_EXPAND_MAX_LEVEL) {
+      return null;
+    }
+
+    let expandedNodes = new Set();
+    for (let prop in object) {
+      if (expandedNodes.size > AUTO_EXPAND_MAX_NODES) {
+        // If we reached the limit of expandable nodes, bail out to avoid performance
+        // issues.
+        break;
+      }
+
+      let nodePath = path + "/" + prop;
+      expandedNodes.add(nodePath);
+
+      let nodes = this.getExpandedNodes(object[prop], nodePath, level + 1);
+      if (nodes) {
+        let newSize = expandedNodes.size + nodes.size;
+        if (newSize < AUTO_EXPAND_MAX_NODES) {
+          // Avoid having a subtree half expanded.
+          expandedNodes = new Set([...expandedNodes, ...nodes]);
+        }
+      }
+    }
+    return expandedNodes;
+  },
+
   render() {
     const {
-      object,
       decorator,
       enableInput,
-      enableFilter,
       expandableStrings,
       filterPlaceHolder,
+      object,
       renderRow,
       renderValue,
       sectionNames,
@@ -127,14 +182,15 @@ const PropertiesView = createClass({
 
     return (
       div({ className: "properties-view" },
-        enableFilter && div({ className: "searchbox-section" },
-          SearchBox({
-            delay: FILTER_SEARCH_DELAY,
-            type: "filter",
-            onChange: this.updateFilterText,
-            placeholder: filterPlaceHolder,
-          }),
-        ),
+        this.shouldRenderSearchBox(object) &&
+          div({ className: "searchbox-section" },
+            SearchBox({
+              delay: FILTER_SEARCH_DELAY,
+              type: "filter",
+              onChange: this.updateFilterText,
+              placeholder: filterPlaceHolder,
+            }),
+          ),
         div({ className: "tree-container" },
           TreeView({
             object,
@@ -147,7 +203,7 @@ const PropertiesView = createClass({
             },
             enableInput,
             expandableStrings,
-            expandedNodes: new Set(sectionNames.map((sec) => "/" + sec)),
+            expandedNodes: this.getExpandedNodes(object),
             onFilter: (props) => this.onFilter(props, sectionNames),
             renderRow: renderRow || this.renderRowWithEditor,
             renderValue: renderValue || this.renderValueWithRep,
@@ -156,7 +212,6 @@ const PropertiesView = createClass({
       )
     );
   }
-
 });
 
 module.exports = PropertiesView;

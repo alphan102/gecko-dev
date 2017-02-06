@@ -274,7 +274,7 @@ var gViewSourceUtils = {
       var ios = Components.classes["@mozilla.org/network/io-service;1"]
                           .getService(Components.interfaces.nsIIOService);
       var charset = data.doc ? data.doc.characterSet : null;
-      var uri = ios.newURI(data.url, charset, null);
+      var uri = ios.newURI(data.url, charset);
       data.uri = uri;
 
       var path;
@@ -366,7 +366,7 @@ var gViewSourceUtils = {
                     .getService(Components.interfaces.nsIPrefBranch)
                     .getComplexValue("view_source.editor.path",
                                      Components.interfaces.nsIFile);
-      let editor = Components.classes['@mozilla.org/process/util;1']
+      let editor = Components.classes["@mozilla.org/process/util;1"]
                              .createInstance(Components.interfaces.nsIProcess);
       editor.init(viewSourceAppPath);
 

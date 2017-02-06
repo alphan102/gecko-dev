@@ -199,6 +199,7 @@ CompartmentPrivate::CompartmentPrivate(JSCompartment* c)
     , allowCPOWs(false)
     , universalXPConnectEnabled(false)
     , forcePermissiveCOWs(false)
+    , wasNuked(false)
     , scriptability(c)
     , scope(nullptr)
     , mWrappedJSMap(JSObject2WrappedJSMap::newMap(XPC_JS_MAP_LENGTH))
@@ -1273,7 +1274,7 @@ XPCJSContext::InterruptCallback(JSContext* cx)
     // returning to the event loop. See how long it's been, and what the limit
     // is.
     TimeDuration duration = TimeStamp::NowLoRes() - self->mSlowScriptCheckpoint;
-    bool chrome = nsContentUtils::IsCallerChrome();
+    bool chrome = nsContentUtils::IsSystemCaller(cx);
     const char* prefName = chrome ? PREF_MAX_SCRIPT_RUN_TIME_CHROME
                                   : PREF_MAX_SCRIPT_RUN_TIME_CONTENT;
     int32_t limit = Preferences::GetInt(prefName, chrome ? 20 : 10);
@@ -1448,6 +1449,12 @@ ReloadPrefsCallback(const char* pref, void* data)
     bool useBaselineEager = Preferences::GetBool(JS_OPTIONS_DOT_STR
                                                  "baselinejit.unsafe_eager_compilation");
     bool useIonEager = Preferences::GetBool(JS_OPTIONS_DOT_STR "ion.unsafe_eager_compilation");
+#ifdef DEBUG
+    bool fullJitDebugChecks = Preferences::GetBool(JS_OPTIONS_DOT_STR "jit.full_debug_checks");
+#endif
+
+    int32_t baselineThreshold = Preferences::GetInt(JS_OPTIONS_DOT_STR "baselinejit.threshold", -1);
+    int32_t ionThreshold = Preferences::GetInt(JS_OPTIONS_DOT_STR "ion.threshold", -1);
 
     sDiscardSystemSource = Preferences::GetBool(JS_OPTIONS_DOT_STR "discardSystemSource");
 
@@ -1479,6 +1486,10 @@ ReloadPrefsCallback(const char* pref, void* data)
     }
 #endif // JS_GC_ZEAL
 
+#ifdef FUZZING
+    bool fuzzingEnabled = Preferences::GetBool("fuzzing.enabled");
+#endif
+
     JS::ContextOptionsRef(cx).setBaseline(useBaseline)
                              .setIon(useIon)
                              .setAsmJS(useAsmJS)
@@ -1490,14 +1501,20 @@ ReloadPrefsCallback(const char* pref, void* data)
                              .setThrowOnDebuggeeWouldRun(throwOnDebuggeeWouldRun)
                              .setDumpStackOnDebuggeeWouldRun(dumpStackOnDebuggeeWouldRun)
                              .setWerror(werror)
+#ifdef FUZZING
+                             .setFuzzing(fuzzingEnabled)
+#endif
                              .setExtraWarnings(extraWarnings);
 
     JS_SetParallelParsingEnabled(cx, parallelParsing);
     JS_SetOffthreadIonCompilationEnabled(cx, offthreadIonCompilation);
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_BASELINE_WARMUP_TRIGGER,
-                                  useBaselineEager ? 0 : -1);
+                                  useBaselineEager ? 0 : baselineThreshold);
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_ION_WARMUP_TRIGGER,
-                                  useIonEager ? 0 : -1);
+                                  useIonEager ? 0 : ionThreshold);
+#ifdef DEBUG
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_FULL_DEBUG_CHECKS, fullJitDebugChecks);
+#endif
 }
 
 XPCJSContext::~XPCJSContext()
@@ -1556,9 +1573,9 @@ XPCJSContext::~XPCJSContext()
     delete mDyingWrappedNativeProtoMap;
     mDyingWrappedNativeProtoMap = nullptr;
 
-#ifdef MOZ_ENABLE_PROFILER_SPS
+#ifdef MOZ_GECKO_PROFILER
     // Tell the profiler that the context is gone
-    if (PseudoStack* stack = mozilla_get_pseudo_stack())
+    if (PseudoStack* stack = profiler_get_pseudo_stack())
         stack->sampleContext(nullptr);
 #endif
 
@@ -2358,6 +2375,10 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats& rtStats,
     RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/atoms-table"),
         KIND_HEAP, rtStats.runtime.atomsTable,
         "The atoms table.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/atoms-mark-bitmaps"),
+        KIND_HEAP, rtStats.runtime.atomsMarkBitmaps,
+        "Mark bitmaps for atoms held by each zone.");
 
     RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/contexts"),
         KIND_HEAP, rtStats.runtime.contexts,
@@ -3210,7 +3231,7 @@ class XPCJSSourceHook: public js::SourceHook {
         *src = nullptr;
         *length = 0;
 
-        if (!nsContentUtils::IsCallerChrome())
+        if (!nsContentUtils::IsSystemCaller(cx))
             return true;
 
         if (!filename)
@@ -3418,8 +3439,8 @@ XPCJSContext::Initialize()
     JS_AddWeakPointerCompartmentCallback(cx, WeakPointerCompartmentCallback, this);
     JS_SetWrapObjectCallbacks(cx, &WrapObjectCallbacks);
     js::SetPreserveWrapperCallback(cx, PreserveWrapper);
-#ifdef MOZ_ENABLE_PROFILER_SPS
-    if (PseudoStack* stack = mozilla_get_pseudo_stack())
+#ifdef MOZ_GECKO_PROFILER
+    if (PseudoStack* stack = profiler_get_pseudo_stack())
         stack->sampleContext(cx);
 #endif
     JS_SetAccumulateTelemetryCallback(cx, AccumulateTelemetryCallback);
@@ -3528,7 +3549,6 @@ bool
 XPCJSContext::DescribeCustomObjects(JSObject* obj, const js::Class* clasp,
                                     char (&name)[72]) const
 {
-    XPCNativeScriptableInfo* si = nullptr;
 
     if (!IS_PROTO_CLASS(clasp)) {
         return false;
@@ -3536,13 +3556,13 @@ XPCJSContext::DescribeCustomObjects(JSObject* obj, const js::Class* clasp,
 
     XPCWrappedNativeProto* p =
         static_cast<XPCWrappedNativeProto*>(xpc_GetJSPrivate(obj));
-    si = p->GetScriptableInfo();
-
-    if (!si) {
+    nsCOMPtr<nsIXPCScriptable> scr = p->GetScriptable();
+    if (!scr) {
         return false;
     }
 
-    SprintfLiteral(name, "JS Object (%s - %s)", clasp->name, si->GetJSClass()->name);
+    SprintfLiteral(name, "JS Object (%s - %s)",
+                   clasp->name, scr->GetJSClass()->name);
     return true;
 }
 

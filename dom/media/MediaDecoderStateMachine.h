@@ -104,6 +104,7 @@ namespace media {
 class MediaSink;
 }
 
+class AbstractThread;
 class AudioSegment;
 class DecodedStream;
 class MediaDecoderReaderWrapper;
@@ -161,7 +162,7 @@ public:
     DECODER_STATE_SHUTDOWN
   };
 
-  void DumpDebugInfo();
+  RefPtr<MediaDecoder::DebugInfoPromise> RequestDebugInfo();
 
   void AddOutputStream(ProcessedMediaStream* aStream, bool aFinishWhenEnded);
   // Remove an output stream added with AddOutputStream.
@@ -238,6 +239,8 @@ private:
   static const char* ToStateStr(State aState);
   static const char* ToStr(NextFrameStatus aStatus);
   const char* ToStateStr();
+
+  nsCString GetDebugInfo();
 
   // Functions used by assertions to ensure we're calling things
   // on the appropriate threads.
@@ -408,12 +411,6 @@ protected:
 
   void EnqueueFirstFrameLoadedEvent();
 
-  // Dispatch a task to decode audio if there is not.
-  void EnsureAudioDecodeTaskQueued();
-
-  // Dispatch a task to decode video if there is not.
-  void EnsureVideoDecodeTaskQueued();
-
   // Start a task to decode audio.
   void RequestAudioData();
 
@@ -449,9 +446,6 @@ protected:
 
   void FinishDecodeFirstFrame();
 
-  // Queries our state to see whether the decode has finished for all streams.
-  bool CheckIfDecodeComplete();
-
   // Performs one "cycle" of the state machine.
   void RunStateMachine();
 
@@ -472,11 +466,8 @@ private:
   void OnMediaSinkAudioError(nsresult aResult);
   void OnMediaSinkVideoError();
 
-  // Return true if the video decoder's decode speed can not catch up the
-  // play time.
-  bool NeedToSkipToNextKeyframe();
-
   void* const mDecoderID;
+  const RefPtr<AbstractThread> mAbstractMainThread;
   const RefPtr<FrameStatistics> mFrameStats;
   const RefPtr<VideoFrameContainer> mVideoFrameContainer;
   const dom::AudioChannel mAudioChannel;
@@ -500,8 +491,6 @@ private:
   // Queue of video frames. This queue is threadsafe, and is accessed from
   // the decoder, state machine, and main threads.
   MediaQueue<MediaData> mVideoQueue;
-
-  State mState = DECODER_STATE_DECODING_METADATA;
 
   UniquePtr<StateObject> mStateObj;
 

@@ -4,10 +4,9 @@
 
 var gFxAccounts = {
 
-  SYNC_MIGRATION_NOTIFICATION_TITLE: "fxa-migration",
-
   _initialized: false,
   _inCustomizationMode: false,
+  _profileFetched: false,
 
   get weave() {
     delete this.weave;
@@ -25,7 +24,6 @@ var gFxAccounts = {
       "weave:service:setup-complete",
       "weave:service:sync:error",
       "weave:ui:login:error",
-      "fxa-migration:state-changed",
       this.FxAccountsCommon.ONLOGIN_NOTIFICATION,
       this.FxAccountsCommon.ONLOGOUT_NOTIFICATION,
       this.FxAccountsCommon.ON_PROFILE_CHANGE_NOTIFICATION,
@@ -83,6 +81,28 @@ var gFxAccounts = {
     return Services.prefs.getBoolPref("services.sync.sendTabToDevice.enabled");
   },
 
+  isSendableURI(aURISpec) {
+    if (!aURISpec) {
+      return false;
+    }
+    // Disallow sending tabs with more than 65535 characters.
+    if (aURISpec.length > 65535) {
+      return false;
+    }
+    try {
+      // Filter out un-sendable URIs -- things like local files, object urls, etc.
+      const unsendableRegexp = new RegExp(
+        Services.prefs.getCharPref("services.sync.engine.tabs.filteredUrls"), "i");
+      return !unsendableRegexp.test(aURISpec);
+    } catch (e) {
+      // The preference has been removed, or is an invalid regexp, so we log an
+      // error and treat it as a valid URI -- and the more problematic case is
+      // the length, which we've already addressed.
+      Cu.reportError(`Failed to build url filter regexp for send tab: ${e}`);
+      return true;
+    }
+  },
+
   get remoteClients() {
     return Weave.Service.clientsEngine.remoteClients
            .sort((a, b) => a.name.localeCompare(b.name));
@@ -121,89 +141,26 @@ var gFxAccounts = {
 
   observe(subject, topic, data) {
     switch (topic) {
-      case "fxa-migration:state-changed":
-        this.onMigrationStateChanged(data, subject);
-        break;
-      case this.FxAccountsCommon.ONPROFILE_IMAGE_CHANGE_NOTIFICATION:
-        this.updateUI();
-        break;
+      case this.FxAccountsCommon.ON_PROFILE_CHANGE_NOTIFICATION:
+        this._profileFetched = false;
+        // Fallthrough intended
       default:
         this.updateUI();
         break;
     }
   },
 
-  onMigrationStateChanged() {
-    // Since we nuked most of the migration code, this notification will fire
-    // once after legacy Sync has been disconnected (and should never fire
-    // again)
-    let nb = window.document.getElementById("global-notificationbox");
-
-    let msg = this.strings.GetStringFromName("autoDisconnectDescription")
-    let signInLabel = this.strings.GetStringFromName("autoDisconnectSignIn.label");
-    let signInAccessKey = this.strings.GetStringFromName("autoDisconnectSignIn.accessKey");
-    let learnMoreLink = this.fxaMigrator.learnMoreLink;
-
-    let buttons = [
-      {
-        label: signInLabel,
-        accessKey: signInAccessKey,
-        callback: () => {
-          this.openPreferences();
-        }
-      }
-    ];
-
-    let fragment = document.createDocumentFragment();
-    let msgNode = document.createTextNode(msg);
-    fragment.appendChild(msgNode);
-    if (learnMoreLink) {
-      let link = document.createElement("label");
-      link.className = "text-link";
-      link.setAttribute("value", learnMoreLink.text);
-      link.href = learnMoreLink.href;
-      fragment.appendChild(link);
-    }
-
-    nb.appendNotification(fragment,
-                          this.SYNC_MIGRATION_NOTIFICATION_TITLE,
-                          undefined,
-                          nb.PRIORITY_WARNING_LOW,
-                          buttons);
-
-    // ensure the hamburger menu reflects the newly disconnected state.
-    this.updateAppMenuItem();
-  },
-
   handleEvent(event) {
     this._inCustomizationMode = event.type == "customizationstarting";
-    this.updateAppMenuItem();
+    this.updateUI();
   },
 
+  // Note that updateUI() returns a Promise that's only used by tests.
   updateUI() {
-    // It's possible someone signed in to FxA after seeing our notification
-    // about "Legacy Sync migration" (which now is actually "Legacy Sync
-    // auto-disconnect") so kill that notification if it still exists.
-    let nb = window.document.getElementById("global-notificationbox");
-    let n = nb.getNotificationWithValue(this.SYNC_MIGRATION_NOTIFICATION_TITLE);
-    if (n) {
-      nb.removeNotification(n, true);
-    }
-
-    this.updateAppMenuItem();
-  },
-
-  // Note that updateAppMenuItem() returns a Promise that's only used by tests.
-  updateAppMenuItem() {
     let profileInfoEnabled = false;
     try {
       profileInfoEnabled = Services.prefs.getBoolPref("identity.fxaccounts.profile_image.enabled");
     } catch (e) { }
-
-    // Bail out if FxA is disabled.
-    if (!this.weave.fxAccountsEnabled) {
-      return Promise.resolve();
-    }
 
     this.panelUIFooter.hidden = false;
 
@@ -298,7 +255,7 @@ var gFxAccounts = {
       updateWithUserData(userData);
       // unverified users cause us to spew log errors fetching an OAuth token
       // to fetch the profile, so don't even try in that case.
-      if (!userData || !userData.verified || !profileInfoEnabled) {
+      if (!userData || !userData.verified || !profileInfoEnabled || this._profileFetched) {
         return null; // don't even try to grab the profile.
       }
       return fxAccounts.getSignedInUserProfile().catch(err => {
@@ -310,6 +267,7 @@ var gFxAccounts = {
         return;
       }
       updateWithProfile(profile);
+      this._profileFetched = true; // Try to avoid fetching the profile on every UI update
     }).catch(error => {
       // This is most likely in tests, were we quickly log users in and out.
       // The most likely scenario is a user logged out, so reflect that.
@@ -410,14 +368,16 @@ var gFxAccounts = {
     devicesPopup.appendChild(fragment);
   },
 
-  updateTabContextMenu(aPopupMenu) {
+  updateTabContextMenu(aPopupMenu, aTargetTab) {
     if (!this.sendTabToDeviceEnabled) {
       return;
     }
 
-    const remoteClientPresent = this.remoteClients.length > 0;
+    const targetURI = aTargetTab.linkedBrowser.currentURI.spec;
+    const showSendTab = this.remoteClients.length > 0 && this.isSendableURI(targetURI);
+
     ["context_sendTabToDevice", "context_sendTabToDevice_separator"]
-    .forEach(id => { document.getElementById(id).hidden = !remoteClientPresent });
+    .forEach(id => { document.getElementById(id).hidden = !showSendTab });
   },
 
   initPageContextMenu(contextMenu) {
@@ -427,13 +387,20 @@ var gFxAccounts = {
 
     const remoteClientPresent = this.remoteClients.length > 0;
     // showSendLink and showSendPage are mutually exclusive
-    const showSendLink = remoteClientPresent
-                         && (contextMenu.onSaveableLink || contextMenu.onPlainTextLink);
+    let showSendLink = remoteClientPresent
+                       && (contextMenu.onSaveableLink || contextMenu.onPlainTextLink);
     const showSendPage = !showSendLink && remoteClientPresent
                          && !(contextMenu.isContentSelected ||
                               contextMenu.onImage || contextMenu.onCanvas ||
                               contextMenu.onVideo || contextMenu.onAudio ||
-                              contextMenu.onLink || contextMenu.onTextInput);
+                              contextMenu.onLink || contextMenu.onTextInput)
+                         && this.isSendableURI(contextMenu.browser.currentURI.spec);
+
+    if (showSendLink) {
+      // This isn't part of the condition above since we don't want to try and
+      // send the page if a link is clicked on or selected but is not sendable.
+      showSendLink = this.isSendableURI(contextMenu.linkURL);
+    }
 
     ["context-sendpagetodevice", "context-sep-sendpagetodevice"]
     .forEach(id => contextMenu.showItem(id, showSendPage));
@@ -445,9 +412,6 @@ var gFxAccounts = {
 XPCOMUtils.defineLazyGetter(gFxAccounts, "FxAccountsCommon", function() {
   return Cu.import("resource://gre/modules/FxAccountsCommon.js", {});
 });
-
-XPCOMUtils.defineLazyModuleGetter(gFxAccounts, "fxaMigrator",
-  "resource://services-sync/FxaMigrator.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "EnsureFxAccountsWebChannel",
   "resource://gre/modules/FxAccountsWebChannel.jsm");

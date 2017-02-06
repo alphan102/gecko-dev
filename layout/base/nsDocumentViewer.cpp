@@ -225,8 +225,6 @@ class nsDocumentViewer final : public nsIContentViewer,
 public:
   nsDocumentViewer();
 
-  NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
-
   // nsISupports interface...
   NS_DECL_ISUPPORTS
 
@@ -506,14 +504,36 @@ void nsDocumentViewer::PrepareToStartLoad()
 #endif // NS_PRINTING
 }
 
-// Note: operator new zeros our memory, so no need to init things to null.
 nsDocumentViewer::nsDocumentViewer()
-  : mTextZoom(1.0), mPageZoom(1.0), mOverrideDPPX(0.0), mMinFontSize(0),
+  : mParentWidget(nullptr),
+    mAttachedToParent(false),
+    mTextZoom(1.0),
+    mPageZoom(1.0),
+    mOverrideDPPX(0.0),
+    mMinFontSize(0),
+    mNumURLStarts(0),
+    mDestroyRefCount(0),
+    mStopped(false),
+    mLoaded(false),
+    mDeferredWindowClose(false),
     mIsSticky(true),
-#ifdef NS_PRINT_PREVIEW
+    mInPermitUnload(false),
+    mInPermitUnloadPrompt(false),
+#ifdef NS_PRINTING
+    mClosingWhilePrinting(false),
+#if NS_PRINT_PREVIEW
+    mPrintPreviewZoomed(false),
+    mPrintIsPending(false),
+    mPrintDocIsFullyLoaded(false),
+    mOriginalPrintPreviewScale(0.0),
     mPrintPreviewZoom(1.0),
-#endif
+#endif // NS_PRINT_PREVIEW
+#ifdef DEBUG
+    mDebugFile(nullptr),
+#endif // DEBUG
+#endif // NS_PRINTING
     mHintCharsetSource(kCharsetUninitialized),
+    mIsPageMode(false),
     mInitializedForPrintPreview(false),
     mHidden(false)
 {
@@ -1065,6 +1085,10 @@ nsDocumentViewer::LoadComplete(nsresult aStatus)
 
   nsJSContext::LoadEnd();
 
+  // It's probably a good idea to GC soon since we have finished loading.
+  nsJSContext::PokeGC(JS::gcreason::LOAD_END,
+                      mDocument ? mDocument->GetWrapperPreserveColor() : nullptr);
+
 #ifdef NS_PRINTING
   // Check to see if someone tried to print during the load
   if (mPrintIsPending) {
@@ -1314,6 +1338,13 @@ nsDocumentViewer::PageHide(bool aIsUnload)
     return NS_ERROR_NULL_POINTER;
   }
 
+  if (aIsUnload) {
+    // Poke the GC. The window might be collectable garbage now.
+    nsJSContext::PokeGC(JS::gcreason::PAGE_HIDE,
+                        mDocument->GetWrapperPreserveColor(),
+                        NS_GC_DELAY * 2);
+  }
+
   mDocument->OnPageHide(!aIsUnload, nullptr);
 
   // inform the window so that the focus state is reset.
@@ -1323,9 +1354,6 @@ nsDocumentViewer::PageHide(bool aIsUnload)
     window->PageHidden();
 
   if (aIsUnload) {
-    // Poke the GC. The window might be collectable garbage now.
-    nsJSContext::PokeGC(JS::gcreason::PAGE_HIDE, NS_GC_DELAY * 2);
-
     // if Destroy() was called during OnPageHide(), mDocument is nullptr.
     NS_ENSURE_STATE(mDocument);
 
@@ -2397,6 +2425,12 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
 NS_IMETHODIMP
 nsDocumentViewer::ClearHistoryEntry()
 {
+  if (mDocument) {
+    nsJSContext::PokeGC(JS::gcreason::PAGE_HIDE,
+                        mDocument->GetWrapperPreserveColor(),
+                        NS_GC_DELAY * 2);
+  }
+
   mSHEntry = nullptr;
   return NS_OK;
 }

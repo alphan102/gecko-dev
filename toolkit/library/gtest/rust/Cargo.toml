@@ -5,6 +5,10 @@ authors = ["nobody@mozilla.org"]
 license = "MPL-2.0"
 description = "Testing code for libgkrust"
 
+[features]
+bindgen = ["gkrust-shared/bindgen"]
+servo = ["gkrust-shared/servo"]
+
 [dependencies]
 mp4parse-gtest = { path = "../../../../dom/media/gtest" }
 nsstring-gtest = { path = "../../../../xpcom/rust/nsstring/gtest" }

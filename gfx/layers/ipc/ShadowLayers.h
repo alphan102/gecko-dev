@@ -182,7 +182,7 @@ public:
    * the compositable or it's IPDL actor here, so we use an ID instead, that
    * is matched on the compositor side.
    */
-  void AttachAsyncCompositable(uint64_t aCompositableID,
+  void AttachAsyncCompositable(const CompositableHandle& aHandle,
                                ShadowableLayer* aLayer);
 
   /**
@@ -216,9 +216,11 @@ public:
   /**
    * At least one attribute of |aMutant| has changed, and |aMutant|
    * needs to sync to its shadow layer.  This initial implementation
-   * forwards all attributes when any is mutated.
+   * forwards all attributes when any of the appropriate attribute
+   * set is mutated.
    */
   void Mutated(ShadowableLayer* aMutant);
+  void MutatedSimple(ShadowableLayer* aMutant);
 
   void SetRoot(ShadowableLayer* aRoot);
   /**
@@ -251,8 +253,9 @@ public:
   void UseTiledLayerBuffer(CompositableClient* aCompositable,
                                    const SurfaceDescriptorTiles& aTileLayerDescriptor) override;
 
+  void ReleaseCompositable(const CompositableHandle& aHandle) override;
   bool DestroyInTransaction(PTextureChild* aTexture, bool synchronously) override;
-  bool DestroyInTransaction(PCompositableChild* aCompositable, bool synchronously) override;
+  bool DestroyInTransaction(const CompositableHandle& aHandle);
 
   virtual void RemoveTextureFromCompositable(CompositableClient* aCompositable,
                                              TextureClient* aTexture) override;
@@ -284,8 +287,7 @@ public:
    * |aReplies| are directions from the LayerManagerComposite to the
    * caller of EndTransaction().
    */
-  bool EndTransaction(InfallibleTArray<EditReply>* aReplies,
-                      const nsIntRegion& aRegionToClear,
+  bool EndTransaction(const nsIntRegion& aRegionToClear,
                       uint64_t aId,
                       bool aScheduleComposite,
                       uint32_t aPaintSequenceNumber,
@@ -420,6 +422,10 @@ protected:
   void CheckSurfaceDescriptor(const SurfaceDescriptor* aDescriptor) const {}
 #endif
 
+  void ProcessReplies(const nsTArray<EditReply>& aReplies);
+
+  RefPtr<CompositableClient> FindCompositable(const CompositableHandle& aHandle);
+
   bool InWorkerThread();
 
   CompositorBridgeChild* GetCompositorBridgeChild();
@@ -439,6 +445,7 @@ private:
   InfallibleTArray<PluginWindowData> mPluginWindowData;
   UniquePtr<ActiveResourceTracker> mActiveResourceTracker;
   uint64_t mNextLayerHandle;
+  nsDataHashtable<nsUint64HashKey, CompositableClient*> mCompositables;
 };
 
 class CompositableClient;

@@ -78,6 +78,7 @@ public:
   already_AddRefed<nsILoadInfo> CloneForNewRequest() const;
 
   void SetIsPreflight();
+  void SetUpgradeInsecureRequests();
 
 private:
   // private constructor that is only allowed to be called from within
@@ -87,6 +88,7 @@ private:
   LoadInfo(nsIPrincipal* aLoadingPrincipal,
            nsIPrincipal* aTriggeringPrincipal,
            nsIPrincipal* aPrincipalToInherit,
+           nsIPrincipal* aSandboxedLoadingPrincipal,
            nsSecurityFlags aSecurityFlags,
            nsContentPolicyType aContentPolicyType,
            LoadTainting aTainting,
@@ -101,7 +103,7 @@ private:
            bool aEnforceSecurity,
            bool aInitialSecurityCheckDone,
            bool aIsThirdPartyRequest,
-           const NeckoOriginAttributes& aOriginAttributes,
+           const OriginAttributes& aOriginAttributes,
            nsTArray<nsCOMPtr<nsIPrincipal>>& aRedirectChainIncludingInternalRedirects,
            nsTArray<nsCOMPtr<nsIPrincipal>>& aRedirectChain,
            const nsTArray<nsCString>& aUnsafeHeaders,
@@ -130,6 +132,7 @@ private:
   nsCOMPtr<nsIPrincipal>           mLoadingPrincipal;
   nsCOMPtr<nsIPrincipal>           mTriggeringPrincipal;
   nsCOMPtr<nsIPrincipal>           mPrincipalToInherit;
+  nsCOMPtr<nsIPrincipal>           mSandboxedLoadingPrincipal;
   nsWeakPtr                        mLoadingContext;
   nsSecurityFlags                  mSecurityFlags;
   nsContentPolicyType              mInternalContentPolicyType;
@@ -145,7 +148,7 @@ private:
   bool                             mEnforceSecurity;
   bool                             mInitialSecurityCheckDone;
   bool                             mIsThirdPartyContext;
-  NeckoOriginAttributes            mOriginAttributes;
+  OriginAttributes                 mOriginAttributes;
   nsTArray<nsCOMPtr<nsIPrincipal>> mRedirectChainIncludingInternalRedirects;
   nsTArray<nsCOMPtr<nsIPrincipal>> mRedirectChain;
   nsTArray<nsCString>              mCorsUnsafeHeaders;

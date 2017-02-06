@@ -315,7 +315,8 @@ partial interface Navigator {
 
   // Deprecated. Use mediaDevices.getUserMedia instead.
   [Deprecated="NavigatorGetUserMedia", Throws,
-   Func="Navigator::HasUserMediaSupport", UnsafeInPrerendering]
+   Func="Navigator::HasUserMediaSupport", UnsafeInPrerendering,
+   NeedsCallerType]
   void mozGetUserMedia(MediaStreamConstraints constraints,
                        NavigatorUserMediaSuccessCallback successCallback,
                        NavigatorUserMediaErrorCallback errorCallback);
@@ -349,7 +350,7 @@ partial interface Navigator {
 partial interface Navigator {
   [Throws, Pref="beacon.enabled"]
   boolean sendBeacon(DOMString url,
-                     optional (ArrayBufferView or Blob or DOMString or FormData)? data = null);
+                     optional BodyInit? data = null);
 };
 
 partial interface Navigator {
@@ -363,7 +364,7 @@ partial interface Navigator {
 };
 
 partial interface Navigator {
-  [Pref="media.eme.apiVisible", NewObject]
+  [NewObject]
   Promise<MediaKeySystemAccess>
   requestMediaKeySystemAccess(DOMString keySystem,
                               sequence<MediaKeySystemConfiguration> supportedConfigurations);
@@ -379,4 +380,9 @@ partial interface Navigator {
 [NoInterfaceObject, Exposed=(Window,Worker)]
 interface NavigatorConcurrentHardware {
   readonly attribute unsigned long long hardwareConcurrency;
+};
+
+partial interface Navigator {
+  [Pref="security.webauth.webauthn", SameObject]
+  readonly attribute WebAuthentication authentication;
 };

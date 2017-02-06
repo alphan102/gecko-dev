@@ -258,6 +258,12 @@ ClientEngine.prototype = {
     return true;
   },
 
+  _removeClientCommands(clientId) {
+    const allCommands = this._readCommands();
+    delete allCommands[clientId];
+    this._saveCommands(allCommands);
+  },
+
   _syncStartup: function _syncStartup() {
     // Reupload new client record periodically.
     if (Date.now() / 1000 - this.lastRecordUpload > CLIENTS_TTL_REFRESH) {
@@ -490,8 +496,8 @@ ClientEngine.prototype = {
     }
 
     let action = {
-      command: command,
-      args: args,
+      command,
+      args,
       flowID: flowID || Utils.makeGUID(), // used for telemetry.
     };
 
@@ -594,9 +600,8 @@ ClientEngine.prototype = {
     if (!commandData) {
       this._log.error("Unknown command to send: " + command);
       return;
-    }
-    // Don't send a command with the wrong number of arguments.
-    else if (!args || args.length != commandData.args) {
+    } else if (!args || args.length != commandData.args) {
+      // Don't send a command with the wrong number of arguments.
       this._log.error("Expected " + commandData.args + " args for '" +
                       command + "', but got " + args);
       return;
@@ -668,6 +673,8 @@ ClientEngine.prototype = {
   _removeRemoteClient(id) {
     delete this._store._remoteClients[id];
     this._tracker.removeChangedID(id);
+    this._removeClientCommands(id);
+    this._modified.delete(id);
   },
 };
 
@@ -705,7 +712,7 @@ ClientStore.prototype = {
       fxAccounts.getDeviceId().then(id => cb(null, id), cb);
       try {
         record.fxaDeviceId = cb.wait();
-      } catch(error) {
+      } catch (error) {
         this._log.warn("failed to get fxa device id", error);
       }
       record.name = this.engine.localName;

@@ -136,9 +136,8 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
     bool init(uint32_t len = 16) {
         if (!Base::init(len))
             return false;
-        zone->gcWeakMapList.insertFront(this);
-        JSRuntime* rt = zone->runtimeFromMainThread();
-        marked = JS::IsIncrementalGCInProgress(rt->contextFromMainThread());
+        zone->gcWeakMapList().insertFront(this);
+        marked = JS::IsIncrementalGCInProgress(TlsContext.get());
         return true;
     }
 
@@ -188,7 +187,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
 
         Key key(p->key());
         MOZ_ASSERT((markedCell == extractUnbarriered(key)) || (markedCell == getDelegate(key)));
-        if (gc::IsMarked(&key)) {
+        if (gc::IsMarked(marker->runtime(), &key)) {
             TraceEdge(marker, &p->value(), "ephemeron value");
         } else if (keyNeedsMark(key)) {
             TraceEdge(marker, &p->value(), "WeakMap ephemeron value");
@@ -228,7 +227,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
     {
         Zone* zone = key.asCell()->asTenured().zone();
 
-        auto p = zone->gcWeakKeys.get(key);
+        auto p = zone->gcWeakKeys().get(key);
         if (p) {
             gc::WeakEntryVector& weakEntries = p->value;
             if (!weakEntries.append(Move(markable)))
@@ -236,7 +235,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
         } else {
             gc::WeakEntryVector weakEntries;
             MOZ_ALWAYS_TRUE(weakEntries.append(Move(markable)));
-            if (!zone->gcWeakKeys.put(JS::GCCellPtr(key), Move(weakEntries)))
+            if (!zone->gcWeakKeys().put(JS::GCCellPtr(key), Move(weakEntries)))
                 marker->abortLinearWeakMarking();
         }
     }
@@ -248,7 +247,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
 
         for (Enum e(*this); !e.empty(); e.popFront()) {
             // If the entry is live, ensure its key and value are marked.
-            bool keyIsMarked = gc::IsMarked(&e.front().mutableKey());
+            bool keyIsMarked = gc::IsMarked(marker->runtime(), &e.front().mutableKey());
             if (!keyIsMarked && keyNeedsMark(e.front().key())) {
                 TraceEdge(marker, &e.front().mutableKey(), "proxy-preserved WeakMap entry key");
                 keyIsMarked = true;
@@ -256,7 +255,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
             }
 
             if (keyIsMarked) {
-                if (!gc::IsMarked(&e.front().value())) {
+                if (!gc::IsMarked(marker->runtime(), &e.front().value())) {
                     TraceEdge(marker, &e.front().value(), "WeakMap entry value");
                     markedAny = true;
                 }
@@ -295,7 +294,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>,
          * Check if the delegate is marked with any color to properly handle
          * gray marking when the key's delegate is black and the map is gray.
          */
-        return delegate && gc::IsMarkedUnbarriered(&delegate);
+        return delegate && gc::IsMarkedUnbarriered(zone->runtimeFromMainThread(), &delegate);
     }
 
     bool keyNeedsMark(JSScript* script) const {

@@ -37,14 +37,12 @@ using namespace mozilla::dom;
 
 BEGIN_WORKERS_NAMESPACE
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF(ServiceWorkerPrivate)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(ServiceWorkerPrivate)
+NS_IMPL_CYCLE_COLLECTING_NATIVE_ADDREF(ServiceWorkerPrivate)
+NS_IMPL_CYCLE_COLLECTING_NATIVE_RELEASE(ServiceWorkerPrivate)
 NS_IMPL_CYCLE_COLLECTION(ServiceWorkerPrivate, mSupportsArray)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ServiceWorkerPrivate)
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIObserver)
-NS_INTERFACE_MAP_END
+NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(ServiceWorkerPrivate, AddRef)
+NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(ServiceWorkerPrivate, Release)
 
 // Tracks the "dom.disable_open_click_delay" preference.  Modified on main
 // thread, read on worker threads.
@@ -211,11 +209,7 @@ public:
   virtual void
   FinishedWithResult(ExtendableEventResult aResult) = 0;
 
-  NS_IMETHOD_(MozExternalRefCountType)
-  AddRef() = 0;
-
-  NS_IMETHOD_(MozExternalRefCountType)
-  Release() = 0;
+  NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
 };
 
 class KeepAliveHandler final : public WorkerHolder
@@ -393,6 +387,7 @@ public:
     : mRegistration(aRegistration)
     , mNeedTimeCheck(aNeedTimeCheck)
   {
+    MOZ_DIAGNOSTIC_ASSERT(mRegistration);
   }
 
   NS_IMETHOD
@@ -537,7 +532,7 @@ public:
 nsresult
 ServiceWorkerPrivate::SendMessageEvent(JSContext* aCx,
                                        JS::Handle<JS::Value> aMessage,
-                                       const Optional<Sequence<JS::Value>>& aTransferable,
+                                       const Sequence<JSObject*>& aTransferable,
                                        UniquePtr<ServiceWorkerClientInfo>&& aClientInfo)
 {
   AssertIsOnMainThread();
@@ -548,17 +543,13 @@ ServiceWorkerPrivate::SendMessageEvent(JSContext* aCx,
   }
 
   JS::Rooted<JS::Value> transferable(aCx, JS::UndefinedHandleValue);
-  if (aTransferable.WasPassed()) {
-    const Sequence<JS::Value>& value = aTransferable.Value();
-    JS::HandleValueArray elements =
-      JS::HandleValueArray::fromMarkedLocation(value.Length(), value.Elements());
 
-    JSObject* array = JS_NewArrayObject(aCx, elements);
-    if (!array) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-    transferable.setObject(*array);
+  rv = nsContentUtils::CreateJSValueFromSequenceOfObject(aCx, aTransferable,
+                                                         &transferable);
+  if (NS_WARN_IF(rv.Failed())) {
+    return rv.StealNSResult();
   }
+
   RefPtr<KeepAliveToken> token = CreateEventKeepAliveToken();
   RefPtr<SendMesssageEventRunnable> runnable =
     new SendMesssageEventRunnable(mWorkerPrivate, token, Move(aClientInfo));
@@ -592,15 +583,18 @@ public:
     : ExtendableEventWorkerRunnable(aWorkerPrivate, aKeepAliveToken)
     , mRegistration(aRegistration)
   {
-    MOZ_ASSERT(aRegistration);
+    MOZ_DIAGNOSTIC_ASSERT(aRegistration);
   }
 
   void
   PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate, bool aRunResult)
   {
-    nsCOMPtr<nsIRunnable> runnable =
-      new RegistrationUpdateRunnable(mRegistration, true /* time check */);
-    aWorkerPrivate->DispatchToMainThread(runnable.forget());
+    // Sub-class PreRun() or WorkerRun() methods could clear our mRegistration.
+    if (mRegistration) {
+      nsCOMPtr<nsIRunnable> runnable =
+        new RegistrationUpdateRunnable(mRegistration, true /* time check */);
+      aWorkerPrivate->DispatchToMainThread(runnable.forget());
+    }
 
     ExtendableEventWorkerRunnable::PostRun(aCx, aWorkerPrivate, aRunResult);
   }
@@ -1038,62 +1032,17 @@ ServiceWorkerPrivate::SendPushSubscriptionChangeEvent()
 
 namespace {
 
-static void
-DummyNotificationTimerCallback(nsITimer* aTimer, void* aClosure)
-{
-  // Nothing.
-}
-
-class AllowWindowInteractionHandler;
-
-class ClearWindowAllowedRunnable final : public WorkerRunnable
-{
-public:
-  ClearWindowAllowedRunnable(WorkerPrivate* aWorkerPrivate,
-                             AllowWindowInteractionHandler* aHandler)
-  : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount)
-  , mHandler(aHandler)
-  { }
-
-private:
-  bool
-  PreDispatch(WorkerPrivate* aWorkerPrivate) override
-  {
-    // WorkerRunnable asserts that the dispatch is from parent thread if
-    // the busy count modification is WorkerThreadUnchangedBusyCount.
-    // Since this runnable will be dispatched from the timer thread, we override
-    // PreDispatch and PostDispatch to skip the check.
-    return true;
-  }
-
-  void
-  PostDispatch(WorkerPrivate* aWorkerPrivate, bool aDispatchResult) override
-  {
-    // Silence bad assertions.
-  }
-
-  bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override;
-
-  nsresult
-  Cancel() override
-  {
-    // Always ensure the handler is released on the worker thread, even if we
-    // are cancelled.
-    mHandler = nullptr;
-    return WorkerRunnable::Cancel();
-  }
-
-  RefPtr<AllowWindowInteractionHandler> mHandler;
-};
-
 class AllowWindowInteractionHandler final : public ExtendableEventCallback
+                                          , public nsITimerCallback
+                                          , public WorkerHolder
 {
-  friend class ClearWindowAllowedRunnable;
   nsCOMPtr<nsITimer> mTimer;
 
   ~AllowWindowInteractionHandler()
   {
+    // We must either fail to initialize or call ClearWindowAllowed.
+    MOZ_DIAGNOSTIC_ASSERT(!mTimer);
+    MOZ_DIAGNOSTIC_ASSERT(!mWorkerPrivate);
   }
 
   void
@@ -1117,7 +1066,8 @@ class AllowWindowInteractionHandler final : public ExtendableEventCallback
     globalScope->ConsumeWindowInteraction();
     mTimer->Cancel();
     mTimer = nullptr;
-    MOZ_ALWAYS_TRUE(aWorkerPrivate->ModifyBusyCountFromWorker(false));
+
+    ReleaseWorker();
   }
 
   void
@@ -1133,21 +1083,15 @@ class AllowWindowInteractionHandler final : public ExtendableEventCallback
       return;
     }
 
-    RefPtr<ClearWindowAllowedRunnable> r =
-      new ClearWindowAllowedRunnable(aWorkerPrivate, this);
-
-    RefPtr<TimerThreadEventTarget> target =
-      new TimerThreadEventTarget(aWorkerPrivate, r);
-
-    rv = timer->SetTarget(target);
+    rv = timer->SetTarget(aWorkerPrivate->ControlEventTarget());
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return;
     }
 
-    // The important stuff that *has* to be reversed.
-    if (NS_WARN_IF(!aWorkerPrivate->ModifyBusyCountFromWorker(true))) {
+    if (!HoldWorker(aWorkerPrivate, Closing)) {
       return;
     }
+
     aWorkerPrivate->GlobalScope()->AllowWindowInteraction();
     timer.swap(mTimer);
 
@@ -1156,17 +1100,37 @@ class AllowWindowInteractionHandler final : public ExtendableEventCallback
     // The timer can't be initialized before modifying the busy count since the
     // timer thread could run and call the timeout but the worker may
     // already be terminating and modifying the busy count could fail.
-    rv = mTimer->InitWithFuncCallback(DummyNotificationTimerCallback, nullptr,
-                                      gDOMDisableOpenClickDelay,
-                                      nsITimer::TYPE_ONE_SHOT);
+    rv = mTimer->InitWithCallback(this,
+                                  gDOMDisableOpenClickDelay,
+                                  nsITimer::TYPE_ONE_SHOT);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       ClearWindowAllowed(aWorkerPrivate);
       return;
     }
   }
 
+  // nsITimerCallback virtual methods
+  NS_IMETHOD
+  Notify(nsITimer* aTimer) override
+  {
+    MOZ_DIAGNOSTIC_ASSERT(mTimer == aTimer);
+    ClearWindowAllowed(mWorkerPrivate);
+    return NS_OK;
+  }
+
+  // WorkerHolder virtual methods
+  bool
+  Notify(Status aStatus) override
+  {
+    // We could try to hold the worker alive until the timer fires, but other
+    // APIs are not likely to work in this partially shutdown state.  We might
+    // as well let the worker thread exit.
+    ClearWindowAllowed(mWorkerPrivate);
+    return true;
+  }
+
 public:
-  NS_INLINE_DECL_REFCOUNTING(AllowWindowInteractionHandler, override)
+  NS_DECL_THREADSAFE_ISUPPORTS
 
   explicit AllowWindowInteractionHandler(WorkerPrivate* aWorkerPrivate)
   {
@@ -1181,13 +1145,7 @@ public:
   }
 };
 
-bool
-ClearWindowAllowedRunnable::WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
-{
-  mHandler->ClearWindowAllowed(aWorkerPrivate);
-  mHandler = nullptr;
-  return true;
-}
+NS_IMPL_ISUPPORTS(AllowWindowInteractionHandler, nsITimerCallback)
 
 class SendNotificationEventRunnable final : public ExtendableEventWorkerRunnable
 {
@@ -1332,7 +1290,6 @@ class FetchEventRunnable : public ExtendableFunctionalEventWorkerRunnable
                          , public nsIHttpHeaderVisitor {
   nsMainThreadPtrHandle<nsIInterceptedChannel> mInterceptedChannel;
   const nsCString mScriptSpec;
-  nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo> mRegistration;
   nsTArray<nsCString> mHeaderNames;
   nsTArray<nsCString> mHeaderValues;
   nsCString mSpec;
@@ -1363,7 +1320,6 @@ public:
         aWorkerPrivate, aKeepAliveToken, aRegistration)
     , mInterceptedChannel(aChannel)
     , mScriptSpec(aScriptSpec)
-    , mRegistration(aRegistration)
     , mClientId(aDocumentId)
     , mIsReload(aIsReload)
     , mCacheMode(RequestCache::Default)
@@ -1702,15 +1658,23 @@ ServiceWorkerPrivate::SendFetchEvent(nsIInterceptedChannel* aChannel,
 {
   AssertIsOnMainThread();
 
-  if (NS_WARN_IF(!mInfo)) {
+  RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
+  if (NS_WARN_IF(!mInfo || !swm)) {
     return NS_ERROR_FAILURE;
   }
 
-  RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-  MOZ_ASSERT(swm);
-
   RefPtr<ServiceWorkerRegistrationInfo> registration =
     swm->GetRegistration(mInfo->GetPrincipal(), mInfo->Scope());
+
+  // Its possible the registration is removed between starting the interception
+  // and actually dispatching the fetch event.  In these cases we simply
+  // want to restart the original network request.  Since this is a normal
+  // condition we handle the reset here instead of returning an error which
+  // would in turn trigger a console report.
+  if (!registration) {
+    aChannel->ResetInterception();
+    return NS_OK;
+  }
 
   // Handle Fetch algorithm - step 16. If the service worker didn't register
   // any fetch event handlers, then abort the interception and maybe trigger
@@ -1896,7 +1860,7 @@ ServiceWorkerPrivate::TerminateWorker()
     if (Preferences::GetBool("dom.serviceWorkers.testing.enabled")) {
       nsCOMPtr<nsIObserverService> os = services::GetObserverService();
       if (os) {
-        os->NotifyObservers(this, "service-worker-shutdown", nullptr);
+        os->NotifyObservers(nullptr, "service-worker-shutdown", nullptr);
       }
     }
 
@@ -2108,7 +2072,11 @@ ServiceWorkerPrivate::ReleaseToken()
   --mTokenCount;
   if (!mTokenCount) {
     TerminateWorker();
-  } else if (IsIdle()) {
+  }
+
+  // mInfo can be nullptr here if NoteDeadServiceWorkerInfo() is called while
+  // the KeepAliveToken is being proxy released as a runnable.
+  else if (mInfo && IsIdle()) {
     RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
     if (swm) {
       swm->WorkerIsIdle(mInfo);
@@ -2124,38 +2092,6 @@ ServiceWorkerPrivate::CreateEventKeepAliveToken()
   MOZ_ASSERT(mIdleKeepAliveToken);
   RefPtr<KeepAliveToken> ref = new KeepAliveToken(this);
   return ref.forget();
-}
-
-void
-ServiceWorkerPrivate::AddPendingWindow(Runnable* aPendingWindow)
-{
-  AssertIsOnMainThread();
-  pendingWindows.AppendElement(aPendingWindow);
-}
-
-nsresult
-ServiceWorkerPrivate::Observe(nsISupports* aSubject, const char* aTopic, const char16_t* aData)
-{
-  AssertIsOnMainThread();
-
-  nsCString topic(aTopic);
-  if (!topic.Equals(NS_LITERAL_CSTRING("BrowserChrome:Ready"))) {
-    MOZ_ASSERT(false, "Unexpected topic.");
-    return NS_ERROR_FAILURE;
-  }
-
-  nsCOMPtr<nsIObserverService> os = services::GetObserverService();
-  NS_ENSURE_STATE(os);
-  os->RemoveObserver(static_cast<nsIObserver*>(this), "BrowserChrome:Ready");
-
-  size_t len = pendingWindows.Length();
-  for (int i = len-1; i >= 0; i--) {
-    RefPtr<Runnable> runnable = pendingWindows[i];
-    MOZ_ALWAYS_SUCCEEDS(NS_DispatchToMainThread(runnable));
-    pendingWindows.RemoveElementAt(i);
-  }
-
-  return NS_OK;
 }
 
 void

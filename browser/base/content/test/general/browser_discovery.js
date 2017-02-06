@@ -6,9 +6,8 @@ function doc() {
 
 function setHandlerFunc(aResultFunc) {
   gBrowser.addEventListener("DOMLinkAdded", function(event) {
-    gBrowser.removeEventListener("DOMLinkAdded", arguments.callee, false);
     executeSoon(aResultFunc);
-  }, false);
+  }, {once: true});
 }
 
 function test() {
@@ -17,9 +16,8 @@ function test() {
   gBrowser.selectedTab = gBrowser.addTab();
   browser = gBrowser.selectedBrowser;
   browser.addEventListener("load", function(event) {
-    event.currentTarget.removeEventListener("load", arguments.callee, true);
     iconDiscovery();
-  }, true);
+  }, {capture: true, once: true});
   var rootDir = getRootDirectory(gTestPath);
   content.location = rootDir + "discovery.html";
 }
@@ -44,7 +42,7 @@ function runIconDiscoveryTest() {
   else
     ok(!hasSrc, testCase.text);
 
-  head.removeChild(head.getElementsByTagName('link')[0]);
+  head.removeChild(head.getElementsByTagName("link")[0]);
   iconDiscoveryTests.shift();
   iconDiscovery(); // Run the next test.
 }

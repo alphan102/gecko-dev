@@ -20,9 +20,40 @@ GeckoCustom::get_anchorCount(long* aCount)
   return S_OK;
 }
 
+HRESULT
+GeckoCustom::get_DOMNodeID(BSTR* aID)
+{
+  nsIContent* content = mAcc->GetContent();
+  if (!content) {
+    return S_OK;
+  }
+
+  nsIAtom* id = content->GetID();
+  if (id) {
+    nsAutoString idStr;
+    id->ToString(idStr);
+    *aID = ::SysAllocStringLen(idStr.get(), idStr.Length());
+  }
+  return S_OK;
+}
+
 STDMETHODIMP
 GeckoCustom::get_ID(uint64_t* aID)
 {
   *aID = mAcc->IsDoc() ? 0 : reinterpret_cast<uintptr_t>(mAcc.get());
+  return S_OK;
+}
+
+STDMETHODIMP
+GeckoCustom::get_minimumIncrement(double* aIncrement)
+{
+  *aIncrement = mAcc->Step();
+  return S_OK;
+}
+
+STDMETHODIMP
+GeckoCustom::get_mozState(uint64_t* aState)
+{
+  *aState = mAcc->State();
   return S_OK;
 }

@@ -26,7 +26,6 @@ dictionary FilePropertyBag {
 
 dictionary ChromeFilePropertyBag : FilePropertyBag {
   DOMString name = "";
-  boolean temporary = false;
 };
 
 // Mozilla extensions
@@ -37,14 +36,14 @@ partial interface File {
   [BinaryName="path", Func="mozilla::dom::Directory::WebkitBlinkDirectoryPickerEnabled"]
   readonly attribute USVString webkitRelativePath;
 
-  [GetterThrows, ChromeOnly]
+  [GetterThrows, ChromeOnly, NeedsCallerType]
   readonly attribute DOMString mozFullPath;
 
-  [ChromeOnly, Throws]
+  [ChromeOnly, Throws, NeedsCallerType]
   static File createFromNsIFile(nsIFile file,
                                 optional ChromeFilePropertyBag options);
 
-  [ChromeOnly, Throws]
+  [ChromeOnly, Throws, NeedsCallerType]
   static File createFromFileName(USVString fileName,
                                  optional ChromeFilePropertyBag options);
 };

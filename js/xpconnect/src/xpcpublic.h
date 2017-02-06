@@ -151,6 +151,23 @@ IsXrayWrapper(JSObject* obj);
 JSObject*
 XrayAwareCalleeGlobal(JSObject* fun);
 
+// A version of XrayAwareCalleeGlobal that can be used from a binding
+// specialized getter.  We need this function because in a specialized getter we
+// don't have a callee JSFunction, so can't use xpc::XrayAwareCalleeGlobal.
+// Instead we do something a bit hacky using our current compartment and "this"
+// value.  Note that for the Xray case thisObj will NOT be in the compartment of
+// "cx".
+//
+// As expected, the outparam "global" need not be same-compartment with either
+// thisObj or cx, though it _will_ be same-compartment with one of them.
+//
+// This function can fail; the return value indicates success or failure.
+bool
+XrayAwareCalleeGlobalForSpecializedGetters(JSContext* cx,
+                                           JS::Handle<JSObject*> thisObj,
+                                           JS::MutableHandle<JSObject*> global);
+
+
 void
 TraceXPCGlobal(JSTracer* trc, JSObject* obj);
 
@@ -212,11 +229,18 @@ class XPCStringConvert
     struct ZoneStringCache
     {
         // mString owns mBuffer.  mString is a JS thing, so it can only die
-        // during GC.  We clear mString and mBuffer during GC.  As long as
-        // the above holds, mBuffer should not be a dangling pointer, so
+        // during GC, though it can drop its ref to the buffer if it gets
+        // flattened and wasn't null-terminated.  We clear mString and mBuffer
+        // during GC and in our finalizer (to catch the flatterning case).  As
+        // long as the above holds, mBuffer should not be a dangling pointer, so
         // using this as a cache key should be safe.
-        void* mBuffer;
-        JSString* mString;
+        //
+        // We also need to include the string's length in the cache key, because
+        // now that we allow non-null-terminated buffers we can have two strings
+        // with the same mBuffer but different lengths.
+        void* mBuffer = nullptr;
+        uint32_t mLength = 0;
+        JSString* mString = nullptr;
     };
 
 public:
@@ -235,7 +259,7 @@ public:
     {
         JS::Zone* zone = js::GetContextZone(cx);
         ZoneStringCache* cache = static_cast<ZoneStringCache*>(JS_GetZoneUserData(zone));
-        if (cache && buf == cache->mBuffer) {
+        if (cache && buf == cache->mBuffer && length == cache->mLength) {
             MOZ_ASSERT(JS::GetStringZone(cache->mString) == zone);
             JS::MarkStringAsLive(zone, cache->mString);
             rval.setString(cache->mString);
@@ -255,6 +279,7 @@ public:
             JS_SetZoneUserData(zone, cache);
         }
         cache->mBuffer = buf;
+        cache->mLength = length;
         cache->mString = str;
         *sharedBuffer = true;
         return true;
@@ -278,9 +303,9 @@ public:
 private:
     static const JSStringFinalizer sLiteralFinalizer, sDOMStringFinalizer;
 
-    static void FinalizeLiteral(const JSStringFinalizer* fin, char16_t* chars);
+    static void FinalizeLiteral(JS::Zone* zone, const JSStringFinalizer* fin, char16_t* chars);
 
-    static void FinalizeDOMString(const JSStringFinalizer* fin, char16_t* chars);
+    static void FinalizeDOMString(JS::Zone* zone, const JSStringFinalizer* fin, char16_t* chars);
 
     XPCStringConvert() = delete;
 };
@@ -357,7 +382,7 @@ bool NonVoidStringToJsval(JSContext* cx, mozilla::dom::DOMString& str,
     }
     if (shared) {
         // JS now needs to hold a reference to the buffer
-        buf->AddRef();
+        str.RelinquishBufferOwnership();
     }
     return true;
 }

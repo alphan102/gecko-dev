@@ -62,10 +62,9 @@ function wait_for_popup(aCallback) {
   }
 
   gUtilsMenu.addEventListener("popupshown", function() {
-    gUtilsMenu.removeEventListener("popupshown", arguments.callee, false);
     info("Utilities menu shown");
     aCallback();
-  }, false);
+  }, {once: true});
 }
 
 function wait_for_hide(aCallback) {
@@ -75,10 +74,9 @@ function wait_for_hide(aCallback) {
   }
 
   gUtilsMenu.addEventListener("popuphidden", function() {
-    gUtilsMenu.removeEventListener("popuphidden", arguments.callee, false);
     info("Utilities menu hidden");
     aCallback();
-  }, false);
+  }, {once: true});
 }
 
 add_test(function() {

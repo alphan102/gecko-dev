@@ -53,6 +53,10 @@ let WorkerActor = protocol.ActorClassWithSpec(workerSpec, {
     if (this._dbg.type === Ci.nsIWorkerDebugger.TYPE_SERVICE) {
       let registration = this._getServiceWorkerRegistrationInfo();
       form.scope = registration.scope;
+      let newestWorker = (registration.activeWorker ||
+                          registration.waitingWorker ||
+                          registration.installingWorker);
+      form.fetch = newestWorker && newestWorker.handlesFetchEvents;
     }
     return form;
   },
@@ -171,7 +175,9 @@ let WorkerActor = protocol.ActorClassWithSpec(workerSpec, {
     let type;
     try {
       type = this._dbg.type;
-    } catch (e) {}
+    } catch (e) {
+      // nothing
+    }
 
     if (type == Ci.nsIWorkerDebugger.TYPE_SERVICE) {
       let worker = this._getServiceWorkerInfo();
@@ -227,6 +233,7 @@ let ServiceWorkerActor = protocol.ActorClassWithSpec(serviceWorkerSpec, {
     return {
       url: this._worker.scriptSpec,
       state: this._worker.state,
+      fetch: this._worker.handlesFetchEvents
     };
   },
 
@@ -285,6 +292,8 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
     let waitingWorker = this._waitingWorker.form();
     let activeWorker = this._activeWorker.form();
 
+    let newestWorker = (activeWorker || waitingWorker || installingWorker);
+
     let isE10s = Services.appinfo.browserTabsRemoteAutostart;
     return {
       actor: this.actorID,
@@ -293,6 +302,7 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
       installingWorker,
       waitingWorker,
       activeWorker,
+      fetch: newestWorker && newestWorker.fetch,
       // - In e10s: only active registrations are available.
       // - In non-e10s: registrations always have at least one worker, if the worker is
       // active, the registration is active.
@@ -302,7 +312,7 @@ protocol.ActorClassWithSpec(serviceWorkerRegistrationSpec, {
 
   destroy() {
     protocol.Actor.prototype.destroy.call(this);
-    Services.obs.removeObserver(this, PushService.subscriptionModifiedTopic, false);
+    Services.obs.removeObserver(this, PushService.subscriptionModifiedTopic);
     this._registration.removeListener(this);
     this._registration = null;
     if (this._pushSubscriptionActor) {

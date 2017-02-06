@@ -13,6 +13,8 @@
 namespace mozilla {
 namespace layers {
 
+class CompositorOptions;
+
 /**
  * This class handles layer updates pushed directly from child processes to
  * the compositor thread. It's associated with a CompositorBridgeParent on the
@@ -48,10 +50,10 @@ public:
                          bool* aResult,
                          TextureFactoryIdentifier* aOutIdentifier) override
   { return IPC_FAIL_NO_REASON(this); }
-  virtual mozilla::ipc::IPCResult RecvRequestOverfill() override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvWillClose() override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvPause() override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvResume() override { return IPC_OK(); }
+  virtual mozilla::ipc::IPCResult RecvForceIsFirstPaint() override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvNotifyChildCreated(const uint64_t& child) override;
   virtual mozilla::ipc::IPCResult RecvNotifyChildRecreated(const uint64_t& child) override { return IPC_FAIL_NO_REASON(this); }
   virtual mozilla::ipc::IPCResult RecvAdoptChild(const uint64_t& child) override { return IPC_FAIL_NO_REASON(this); }
@@ -112,7 +114,9 @@ public:
 
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
   virtual mozilla::ipc::IPCResult RecvRemotePluginsReady()  override { return IPC_FAIL_NO_REASON(this); }
-  virtual mozilla::ipc::IPCResult RecvAcknowledgeCompositorUpdate(const uint64_t& aLayersId) override;
+  virtual mozilla::ipc::IPCResult RecvAcknowledgeCompositorUpdate(
+    const uint64_t& aLayersId,
+    const uint64_t& aSeqNo) override;
 
   void DidComposite(uint64_t aId,
                     TimeStamp& aCompositeStart,
@@ -137,7 +141,7 @@ public:
     return false;
   }
 
-  virtual mozilla::ipc::IPCResult RecvAsyncPanZoomEnabled(const uint64_t& aLayersId, bool* aHasAPZ) override;
+  virtual mozilla::ipc::IPCResult RecvGetCompositorOptions(const uint64_t& aLayersId, CompositorOptions* aOptions) override;
 
   virtual PAPZCTreeManagerParent* AllocPAPZCTreeManagerParent(const uint64_t& aLayersId) override;
   virtual bool DeallocPAPZCTreeManagerParent(PAPZCTreeManagerParent* aActor) override;

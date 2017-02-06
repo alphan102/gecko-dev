@@ -22,9 +22,9 @@ XPCOMUtils.defineLazyServiceGetter(this, "AlertsService", "@mozilla.org/alerts-s
 /* global AboutHome:false, AboutNewTab:false, AddonManager:false, AddonWatcher:false,
           AsyncShutdown:false, AutoCompletePopup:false, BookmarkHTMLUtils:false,
           BookmarkJSONUtils:false, BrowserUITelemetry:false, BrowserUsageTelemetry:false,
-          CaptivePortalWatcher:false, ContentClick:false, ContentPrefServiceParent:false,
-          ContentSearch:false, DateTimePickerHelper:false, DirectoryLinksProvider:false,
-          Feeds:false, FileUtils:false, FormValidationHandler:false, Integration:false,
+          ContentClick:false, ContentPrefServiceParent:false, ContentSearch:false,
+          DateTimePickerHelper:false, DirectoryLinksProvider:false, Feeds:false,
+          FileUtils:false, FormValidationHandler:false, Integration:false,
           LightweightThemeManager:false, LoginHelper:false, LoginManagerParent:false,
           NetUtil:false, NewTabMessages:false, NewTabUtils:false, OS:false,
           PageThumbs:false, PdfJs:false, PermissionUI:false, PlacesBackups:false,
@@ -51,7 +51,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "AlertsService", "@mozilla.org/alerts-s
   ["BookmarkJSONUtils", "resource://gre/modules/BookmarkJSONUtils.jsm"],
   ["BrowserUITelemetry", "resource:///modules/BrowserUITelemetry.jsm"],
   ["BrowserUsageTelemetry", "resource:///modules/BrowserUsageTelemetry.jsm"],
-  ["CaptivePortalWatcher", "resource:///modules/CaptivePortalWatcher.jsm"],
   ["ContentClick", "resource:///modules/ContentClick.jsm"],
   ["ContentPrefServiceParent", "resource://gre/modules/ContentPrefServiceParent.jsm"],
   ["ContentSearch", "resource:///modules/ContentSearch.jsm"],
@@ -103,11 +102,11 @@ if (AppConstants.MOZ_CRASHREPORTER) {
 }
 
 XPCOMUtils.defineLazyGetter(this, "gBrandBundle", function() {
-  return Services.strings.createBundle('chrome://branding/locale/brand.properties');
+  return Services.strings.createBundle("chrome://branding/locale/brand.properties");
 });
 
 XPCOMUtils.defineLazyGetter(this, "gBrowserBundle", function() {
-  return Services.strings.createBundle('chrome://browser/locale/browser.properties');
+  return Services.strings.createBundle("chrome://browser/locale/browser.properties");
 });
 
 // Seconds of idle before trying to create a bookmarks backup.
@@ -282,14 +281,6 @@ BrowserGlue.prototype = {
         Services.obs.removeObserver(this, "places-database-locked");
         this._isPlacesLockedObserver = false;
         break;
-      case "places-shutdown":
-        if (this._isPlacesShutdownObserver) {
-          Services.obs.removeObserver(this, "places-shutdown");
-          this._isPlacesShutdownObserver = false;
-        }
-        // places-shutdown is fired when the profile is about to disappear.
-        this._onPlacesShutdown();
-        break;
       case "idle":
         this._backupBookmarks();
         break;
@@ -420,8 +411,6 @@ BrowserGlue.prototype = {
     os.addObserver(this, "places-database-locked", false);
     this._isPlacesLockedObserver = true;
     os.addObserver(this, "distribution-customization-complete", false);
-    os.addObserver(this, "places-shutdown", false);
-    this._isPlacesShutdownObserver = true;
     os.addObserver(this, "handle-xul-text-link", false);
     os.addObserver(this, "profile-before-change", false);
     if (AppConstants.MOZ_TELEMETRY_REPORTING) {
@@ -439,8 +428,7 @@ BrowserGlue.prototype = {
     this._flashHangCount = 0;
     this._firstWindowReady = new Promise(resolve => this._firstWindowLoaded = resolve);
 
-    if (AppConstants.isPlatformAndVersionAtMost("win", "5.2") ||
-        AppConstants.platform == "macosx") {
+    if (AppConstants.platform == "macosx") {
       // Handles prompting to inform about incompatibilites when accessibility
       // and e10s are active together.
       E10SAccessibilityCheck.init();
@@ -476,8 +464,6 @@ BrowserGlue.prototype = {
       os.removeObserver(this, "places-init-complete");
     if (this._isPlacesLockedObserver)
       os.removeObserver(this, "places-database-locked");
-    if (this._isPlacesShutdownObserver)
-      os.removeObserver(this, "places-shutdown");
     os.removeObserver(this, "handle-xul-text-link");
     os.removeObserver(this, "profile-before-change");
     if (AppConstants.MOZ_TELEMETRY_REPORTING) {
@@ -510,7 +496,7 @@ BrowserGlue.prototype = {
       let brandShortName = brandBundle.getString("brandShortName");
       let message = win.gNavigatorBundle.getFormattedString("addonwatch.slow", [addon.name, brandShortName]);
       let notificationBox = win.document.getElementById("global-notificationbox");
-      let notificationId = 'addon-slow:' + addonId;
+      let notificationId = "addon-slow:" + addonId;
       let notification = notificationBox.getNotificationWithValue(notificationId);
 
       // Monitor the response of users
@@ -652,15 +638,27 @@ BrowserGlue.prototype = {
     // Ensure we keep track of places/pw-mananager undo by init'ing this early.
     Cu.import("resource:///modules/AutoMigrate.jsm");
 
-    if (!AppConstants.RELEASE_OR_BETA) {
-      let themeName = gBrowserBundle.GetStringFromName("deveditionTheme.name");
+    if (AppConstants.INSTALL_COMPACT_THEMES) {
       let vendorShortName = gBrandBundle.GetStringFromName("vendorShortName");
 
       LightweightThemeManager.addBuiltInTheme({
-        id: "firefox-devedition@mozilla.org",
-        name: themeName,
-        headerURL: "resource:///chrome/browser/content/browser/defaultthemes/devedition.header.png",
-        iconURL: "resource:///chrome/browser/content/browser/defaultthemes/devedition.icon.png",
+        id: "firefox-compact-light@mozilla.org",
+        name: gBrowserBundle.GetStringFromName("compactLightTheme.name"),
+        description: gBrowserBundle.GetStringFromName("compactLightTheme.description"),
+        headerURL: "resource:///chrome/browser/content/browser/defaultthemes/compact.header.png",
+        iconURL: "resource:///chrome/browser/content/browser/defaultthemes/compactlight.icon.svg",
+        textcolor: "black",
+        accentcolor: "white",
+        author: vendorShortName,
+      });
+      LightweightThemeManager.addBuiltInTheme({
+        id: "firefox-compact-dark@mozilla.org",
+        name: gBrowserBundle.GetStringFromName("compactDarkTheme.name"),
+        description: gBrowserBundle.GetStringFromName("compactDarkTheme.description"),
+        headerURL: "resource:///chrome/browser/content/browser/defaultthemes/compact.header.png",
+        iconURL: "resource:///chrome/browser/content/browser/defaultthemes/compactdark.icon.svg",
+        textcolor: "white",
+        accentcolor: "black",
         author: vendorShortName,
       });
     }
@@ -969,8 +967,6 @@ BrowserGlue.prototype = {
 
     this._checkForOldBuildUpdates();
 
-    CaptivePortalWatcher.init();
-
     AutoCompletePopup.init();
     DateTimePickerHelper.init();
 
@@ -996,10 +992,15 @@ BrowserGlue.prototype = {
       Cu.reportError("Could not end startup crash tracking in quit-application-granted: " + e);
     }
 
+    if (this._bookmarksBackupIdleTime) {
+      this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
+      delete this._bookmarksBackupIdleTime;
+    }
+
     BrowserUsageTelemetry.uninit();
     SelfSupportBackend.uninit();
+    PageThumbs.uninit();
     NewTabMessages.uninit();
-    CaptivePortalWatcher.uninit();
     AboutNewTab.uninit();
     webrtcUI.uninit();
     FormValidationHandler.uninit();
@@ -1049,27 +1050,6 @@ BrowserGlue.prototype = {
     if (this._isPlacesDatabaseLocked) {
       this._showPlacesLockedNotificationBox();
     }
-
-    // For any add-ons that were installed disabled and can be enabled offer
-    // them to the user.
-    let win = RecentWindow.getMostRecentBrowserWindow();
-    AddonManager.getAllAddons(addons => {
-      for (let addon of addons) {
-        // If this add-on has already seen (or seen is undefined for non-XPI
-        // add-ons) then skip it.
-        if (addon.seen !== false) {
-          continue;
-        }
-
-        // If this add-on cannot be enabled (either already enabled or
-        // appDisabled) then skip it.
-        if (!(addon.permissions & AddonManager.PERM_CAN_ENABLE)) {
-          continue;
-        }
-
-        win.openUILinkIn("about:newaddon?id=" + addon.id, "tab");
-      }
-    });
 
     ExtensionsUI.init();
 
@@ -1637,20 +1617,6 @@ BrowserGlue.prototype = {
   },
 
   /**
-   * Places shut-down tasks
-   * - finalize components depending on Places.
-   * - export bookmarks as HTML, if so configured.
-   */
-  _onPlacesShutdown: function BG__onPlacesShutdown() {
-    PageThumbs.uninit();
-
-    if (this._bookmarksBackupIdleTime) {
-      this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
-      delete this._bookmarksBackupIdleTime;
-    }
-  },
-
-  /**
    * If a backup for today doesn't exist, this creates one.
    */
   _backupBookmarks: function BG__backupBookmarks() {
@@ -1719,7 +1685,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 42;
+    const UI_VERSION = 43;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
 
     let currentUIVersion;
@@ -2050,6 +2016,18 @@ BrowserGlue.prototype = {
       let backupFile = Services.dirsvc.get("ProfD", Ci.nsIFile);
       backupFile.append("tabgroups-session-backup.json");
       OS.File.remove(backupFile.path, {ignoreAbsent: true}).catch(ex => Cu.reportError(ex));
+    }
+
+    if (currentUIVersion < 43) {
+      let currentTheme = null;
+      try {
+        currentTheme = Services.prefs.getCharPref("lightweightThemes.selectedThemeID");
+      } catch (e) {}
+      if (currentTheme == "firefox-devedition@mozilla.org") {
+        let newTheme = Services.prefs.getCharPref("devtools.theme") == "dark" ?
+          "firefox-compact-dark@mozilla.org" : "firefox-compact-light@mozilla.org";
+        Services.prefs.setCharPref("lightweightThemes.selectedThemeID", newTheme);
+      }
     }
 
     // Update the migration version.

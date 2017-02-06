@@ -29,8 +29,6 @@ class CompileRuntime
 
     bool onMainThread();
 
-    js::PerThreadData* mainThread();
-
     // &runtime()->jitTop
     const void* addressOfJitTop();
 
@@ -63,8 +61,8 @@ class CompileRuntime
 
     const JitRuntime* jitRuntime();
 
-    // Compilation does not occur off thread when the SPS profiler is enabled.
-    SPSProfiler& spsProfiler();
+    // Compilation does not occur off thread when the Gecko Profiler is enabled.
+    GeckoProfiler& geckoProfiler();
 
     bool jitSupportsFloatingPoint();
     bool hadOutOfMemory();
@@ -138,8 +136,8 @@ class JitCompileOptions
         return cloneSingletons_;
     }
 
-    bool spsSlowAssertionsEnabled() const {
-        return spsSlowAssertionsEnabled_;
+    bool profilerSlowAssertionsEnabled() const {
+        return profilerSlowAssertionsEnabled_;
     }
 
     bool offThreadCompilationAvailable() const {
@@ -148,7 +146,7 @@ class JitCompileOptions
 
   private:
     bool cloneSingletons_;
-    bool spsSlowAssertionsEnabled_;
+    bool profilerSlowAssertionsEnabled_;
     bool offThreadCompilationAvailable_;
 };
 

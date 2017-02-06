@@ -259,14 +259,6 @@ const kEventConstructors = {
                                                           return new MozOtaStatusEvent(aName, aProps);
                                                        },
                                              },
-  MozSettingsEvent:                          { create: function (aName, aProps) {
-                                                         return new MozSettingsEvent(aName, aProps);
-                                                       },
-                                             },
-  MozSettingsTransactionEvent:               { create: function (aName, aProps) {
-                                                         return new MozSettingsTransactionEvent(aName, aProps);
-                                                       },
-                                             },
   MozSmsEvent:                               { create: function (aName, aProps) {
                                                          return new MozSmsEvent(aName, aProps);
                                                        },
@@ -292,7 +284,7 @@ const kEventConstructors = {
   OfflineAudioCompletionEvent:               { create: "AudioContext" in self
                                                         ? function (aName, aProps) {
                                                             var ac = new AudioContext();
-                                                            var ab = new AudioBuffer(ac, { length: 42 });
+                                                            var ab = new AudioBuffer({ length: 42, sampleRate: ac.sampleRate });
                                                             aProps.renderedBuffer = ab;
                                                             return new OfflineAudioCompletionEvent(aName, aProps);
                                                           }
@@ -457,6 +449,12 @@ const kEventConstructors = {
   USSDReceivedEvent:                         { create: function (aName, aProps) {
                                                           return new USSDReceivedEvent(aName, aProps);
                                                        },
+                                             },
+  VRDisplayEvent:                            { create: null,
+                                               // Required argument expects a VRDisplay that can not
+                                               // be created from Javascript without physical VR hardware
+                                               // connected.  When Bug 1229480 lands, this test can be
+                                               // updated to use the puppet VR device.
                                              },
   WheelEvent:                                { create: function (aName, aProps) {
                                                          return new WheelEvent(aName, aProps);

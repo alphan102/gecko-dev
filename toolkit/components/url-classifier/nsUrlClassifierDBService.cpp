@@ -122,6 +122,11 @@ LazyLogModule gUrlClassifierDbServiceLog("UrlClassifierDbService");
 #define CONFIRM_AGE_PREF        "urlclassifier.max-complete-age"
 #define CONFIRM_AGE_DEFAULT_SEC (45 * 60)
 
+// TODO: The following two prefs are to be removed after we
+//       roll out full v4 hash completion. See Bug 1331534.
+#define TAKE_V4_COMPLETION_RESULT_PREF    "browser.safebrowsing.temporary.take_v4_completion_result"
+#define TAKE_V4_COMPLETION_RESULT_DEFAULT false
+
 class nsUrlClassifierDBServiceWorker;
 
 // Singleton instance.
@@ -170,6 +175,9 @@ nsUrlClassifierDBServiceWorker::QueueLookup(const nsACString& spec,
                                             nsIUrlClassifierLookupCallback* callback)
 {
   MutexAutoLock lock(mPendingLookupLock);
+  if (gShuttingDownThread) {
+      return NS_ERROR_ABORT;
+  }
 
   PendingLookup* lookup = mPendingLookups.AppendElement();
   if (!lookup) return NS_ERROR_OUT_OF_MEMORY;
@@ -273,8 +281,12 @@ nsUrlClassifierDBServiceWorker::DoLookup(const nsACString& spec,
   nsAutoPtr<LookupResultArray> completes(new LookupResultArray());
 
   for (uint32_t i = 0; i < results->Length(); i++) {
-    if (!mMissCache.Contains(results->ElementAt(i).hash.fixedLengthPrefix)) {
-      completes->AppendElement(results->ElementAt(i));
+    const LookupResult& lookupResult = results->ElementAt(i);
+
+    // mMissCache should only be used in V2.
+    if (!lookupResult.mProtocolV2 ||
+        !mMissCache.Contains(lookupResult.hash.fixedLengthPrefix)) {
+      completes->AppendElement(lookupResult);
     }
   }
 
@@ -619,8 +631,11 @@ nsUrlClassifierDBServiceWorker::FinishUpdate()
      mUpdateStatus : NS_ERROR_UC_UPDATE_UNKNOWN;
   }
 
-  Telemetry::Accumulate(Telemetry::URLCLASSIFIER_UPDATE_ERROR, provider,
-                        NS_ERROR_GET_CODE(updateStatus));
+  // Do not record telemetry for testing tables.
+  if (!provider.Equals(TESTING_TABLE_PROVIDER_NAME)) {
+    Telemetry::Accumulate(Telemetry::URLCLASSIFIER_UPDATE_ERROR, provider,
+                          NS_ERROR_GET_CODE(updateStatus));
+  }
 
   mMissCache.Clear();
 
@@ -977,7 +992,7 @@ nsUrlClassifierLookupCallback::LookupComplete(nsTArray<LookupResult>* results)
       // has registered the table. In the second case we should not call
       // complete.
       if ((!gethashUrl.IsEmpty() ||
-           StringBeginsWith(result.mTableName, NS_LITERAL_CSTRING("test-"))) &&
+           StringBeginsWith(result.mTableName, NS_LITERAL_CSTRING("test"))) &&
           mDBService->GetCompleter(result.mTableName,
                                    getter_AddRefs(completer))) {
 
@@ -1004,10 +1019,9 @@ nsUrlClassifierLookupCallback::LookupComplete(nsTArray<LookupResult>* results)
         }
       } else {
         // For tables with no hash completer, a complete hash match is
-        // good enough, we'll consider it fresh, even if it hasn't been updated
-        // in 45 minutes.
+        // good enough, we'll consider it is valid.
         if (result.Complete()) {
-          result.mFresh = true;
+          result.mConfirmed = true;
           LOG(("Skipping completion in a table without a valid completer (%s).",
                result.mTableName.get()));
         } else {
@@ -1052,6 +1066,15 @@ nsUrlClassifierLookupCallback::Completion(const nsACString& completeHash,
 {
   LOG(("nsUrlClassifierLookupCallback::Completion [%p, %s, %d]",
        this, PromiseFlatCString(tableName).get(), chunkId));
+
+  if (StringEndsWith(tableName, NS_LITERAL_CSTRING("-proto")) &&
+      !Preferences::GetBool(TAKE_V4_COMPLETION_RESULT_PREF,
+                            TAKE_V4_COMPLETION_RESULT_DEFAULT)) {
+    // Bug 1331534 - We temporarily ignore hash completion result
+    // for v4 tables.
+    return NS_OK;
+  }
+
   mozilla::safebrowsing::Completion hash;
   hash.Assign(completeHash);
 
@@ -1125,6 +1148,7 @@ nsUrlClassifierLookupCallback::HandleResults()
     }
   }
 
+  // TODO: Bug 1333328, Refactor cache miss mechanism for v2.
   // Some parts of this gethash request generated no hits at all.
   // Prefixes must have been removed from the database since our last update.
   // Save the prefixes we checked to prevent repeated requests
@@ -1133,7 +1157,7 @@ nsUrlClassifierLookupCallback::HandleResults()
   if (cacheMisses) {
     for (uint32_t i = 0; i < mResults->Length(); i++) {
       LookupResult &result = mResults->ElementAt(i);
-      if (!result.Confirmed() && !result.mNoise) {
+      if (result.mProtocolV2 && !result.Confirmed() && !result.mNoise) {
         cacheMisses->AppendElement(result.hash.fixedLengthPrefix);
       }
     }

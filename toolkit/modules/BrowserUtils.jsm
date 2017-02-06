@@ -15,7 +15,7 @@ Cu.import("resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
 
-Cu.importGlobalProperties(['URL']);
+Cu.importGlobalProperties(["URL"]);
 
 this.BrowserUtils = {
 
@@ -138,7 +138,7 @@ this.BrowserUtils = {
   },
 
   makeURIFromCPOW(aCPOWURI) {
-    return Services.io.newURI(aCPOWURI.spec, aCPOWURI.originCharset, null);
+    return Services.io.newURI(aCPOWURI.spec, aCPOWURI.originCharset);
   },
 
   /**
@@ -159,7 +159,7 @@ this.BrowserUtils = {
    */
   getElementBoundingRect(aElement, aInScreenCoords) {
     let rect = aElement.getBoundingClientRect();
-    let win = aElement.ownerDocument.defaultView;
+    let win = aElement.ownerGlobal;
 
     let x = rect.left, y = rect.top;
 
@@ -167,8 +167,8 @@ this.BrowserUtils = {
     // over. We also need to compensate for zooming.
     let parentFrame = win.frameElement;
     while (parentFrame) {
-      win = parentFrame.ownerDocument.defaultView;
-      let cstyle = win.getComputedStyle(parentFrame, "");
+      win = parentFrame.ownerGlobal;
+      let cstyle = win.getComputedStyle(parentFrame);
 
       let framerect = parentFrame.getBoundingClientRect();
       x += framerect.left + parseFloat(cstyle.borderLeftWidth) + parseFloat(cstyle.paddingLeft);
@@ -269,7 +269,7 @@ this.BrowserUtils = {
     // The HTML spec says that rel should be split on spaces before looking
     // for particular rel values.
     let values = rel.split(/[ \t\r\n\f]/);
-    return values.indexOf('noreferrer') != -1;
+    return values.indexOf("noreferrer") != -1;
   },
 
   /**

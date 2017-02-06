@@ -190,13 +190,26 @@ namespace dom {
 
 XULDocument::XULDocument(void)
     : XMLDocument("application/vnd.mozilla.xul+xml"),
+      mNextSrcLoadWaiter(nullptr),
+      mApplyingPersistedAttrs(false),
+      mIsWritingFastLoad(false),
+      mDocumentLoaded(false),
+      mStillWalking(false),
+      mRestrictPersistence(false),
+      mTemplateBuilderTable(nullptr),
+      mPendingSheets(0),
       mDocLWTheme(Doc_Theme_Uninitialized),
       mState(eState_Master),
-      mResolutionPhase(nsForwardReference::eStart)
+      mCurrentScriptProto(nullptr),
+      mOffThreadCompiling(false),
+      mOffThreadCompileStringBuf(nullptr),
+      mOffThreadCompileStringLength(0),
+      mResolutionPhase(nsForwardReference::eStart),
+      mBroadcasterMap(nullptr),
+      mInitialLayoutComplete(false),
+      mHandlingDelayedAttrChange(false),
+      mHandlingDelayedBroadcasters(false)
 {
-    // NOTE! nsDocument::operator new() zeroes out all members, so don't
-    // bother initializing members to 0.
-
     // Override the default in nsDocument
     mCharacterSet.AssignLiteral("UTF-8");
 
@@ -226,7 +239,7 @@ XULDocument::~XULDocument()
     delete mTemplateBuilderTable;
 
     Preferences::UnregisterCallback(XULDocument::DirectionChanged,
-                                    "intl.uidirection.", this);
+                                    "intl.uidirection", this);
 
     if (mOffThreadCompileStringBuf) {
       js_free(mOffThreadCompileStringBuf);
@@ -1885,7 +1898,7 @@ XULDocument::Init()
     }
 
     Preferences::RegisterCallback(XULDocument::DirectionChanged,
-                                  "intl.uidirection.", this);
+                                  "intl.uidirection", this);
 
     return NS_OK;
 }
@@ -3634,10 +3647,9 @@ XULDocument::CheckTemplateBuilderHookup(nsIContent* aElement,
     // bad) if aElement is not a XUL element.
     //
     // XXXvarga Do we still want to support non XUL content?
-    nsCOMPtr<nsIDOMXULElement> xulElement = do_QueryInterface(aElement);
+    RefPtr<nsXULElement> xulElement = nsXULElement::FromContent(aElement);
     if (xulElement) {
-        nsCOMPtr<nsIRDFCompositeDataSource> ds;
-        xulElement->GetDatabase(getter_AddRefs(ds));
+        nsCOMPtr<nsIRDFCompositeDataSource> ds = xulElement->GetDatabase();
         if (ds) {
             *aNeedsHookup = false;
             return NS_OK;

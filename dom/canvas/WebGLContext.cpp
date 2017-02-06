@@ -114,6 +114,9 @@ WebGLContextOptions::WebGLContextOptions()
 
 WebGLContext::WebGLContext()
     : WebGLContextUnchecked(nullptr)
+    , mMaxPerfWarnings(gfxPrefs::WebGLMaxPerfWarnings())
+    , mNumPerfWarnings(0)
+    , mMaxAcceptableFBStatusInvals(gfxPrefs::WebGLMaxAcceptableFBStatusInvals())
     , mBufferFetchingIsVerified(false)
     , mBufferFetchingHasPerVertex(false)
     , mMaxFetchedVertices(0)
@@ -1079,6 +1082,7 @@ WebGLContext::SetDimensions(int32_t signedWidth, int32_t signedHeight)
     MakeContextCurrent();
 
     gl->fViewport(0, 0, mWidth, mHeight);
+    mViewportX = mViewportY = 0;
     mViewportWidth = mWidth;
     mViewportHeight = mHeight;
 

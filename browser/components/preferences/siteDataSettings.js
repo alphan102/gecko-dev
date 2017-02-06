@@ -20,9 +20,12 @@ let gSiteDataSettings = {
   // - uri: uri of site; instance of nsIURI
   // - status: persistent-storage permission status
   // - usage: disk usage which site uses
+  // - userAction: "remove" or "update-permission"; the action user wants to take.
+  //               If not specified, means no action to take
   _sites: null,
 
   _list: null,
+  _searchBox: null,
 
   init() {
     function setEventListener(id, eventType, callback) {
@@ -31,16 +34,29 @@ let gSiteDataSettings = {
     }
 
     this._list = document.getElementById("sitesList");
+    this._searchBox = document.getElementById("searchBox");
     SiteDataManager.getSites().then(sites => {
       this._sites = sites;
       let sortCol = document.getElementById("hostCol");
       this._sortSites(this._sites, sortCol);
       this._buildSitesList(this._sites);
+      this._updateButtonsState();
+      Services.obs.notifyObservers(null, "sitedata-settings-init", null);
     });
 
     setEventListener("hostCol", "click", this.onClickTreeCol);
     setEventListener("usageCol", "click", this.onClickTreeCol);
     setEventListener("statusCol", "click", this.onClickTreeCol);
+    setEventListener("searchBox", "command", this.onCommandSearch);
+    setEventListener("cancel", "command", this.close);
+    setEventListener("save", "command", this.saveChanges);
+    setEventListener("removeSelected", "command", this.removeSelected);
+  },
+
+  _updateButtonsState() {
+    let items = this._list.getElementsByTagName("richlistitem");
+    let removeBtn = document.getElementById("removeSelected");
+    removeBtn.disabled = !(items.length > 0);
   },
 
   /**
@@ -89,19 +105,33 @@ let gSiteDataSettings = {
     col.setAttribute("data-last-sortDirection", sortDirection);
   },
 
+  /**
+   * @param sites {Array} array of metadata of sites
+   */
   _buildSitesList(sites) {
     // Clear old entries.
-    while (this._list.childNodes.length > 1) {
-      this._list.removeChild(this._list.lastChild);
+    let oldItems = this._list.querySelectorAll("richlistitem");
+    for (let item of oldItems) {
+      item.remove();
     }
 
     let prefStrBundle = document.getElementById("bundlePreferences");
+    let keyword = this._searchBox.value.toLowerCase().trim();
     for (let data of sites) {
+      let host = data.uri.host;
+      if (keyword && !host.includes(keyword)) {
+        continue;
+      }
+
+      if (data.userAction === "remove") {
+        continue;
+      }
+
       let statusStrId = data.status === Ci.nsIPermissionManager.ALLOW_ACTION ? "important" : "default";
       let size = DownloadUtils.convertByteUnits(data.usage);
       let item = document.createElement("richlistitem");
       item.setAttribute("data-origin", data.uri.spec);
-      item.setAttribute("host", data.uri.host);
+      item.setAttribute("host", host);
       item.setAttribute("status", prefStrBundle.getString(statusStrId));
       item.setAttribute("usage", prefStrBundle.getFormattedString("siteUsage", size));
       this._list.appendChild(item);
@@ -111,5 +141,99 @@ let gSiteDataSettings = {
   onClickTreeCol(e) {
     this._sortSites(this._sites, e.target);
     this._buildSitesList(this._sites);
+  },
+
+  onCommandSearch() {
+    this._buildSitesList(this._sites);
+  },
+
+  removeSelected() {
+    let selected = this._list.selectedItem;
+    if (selected) {
+      let origin = selected.getAttribute("data-origin");
+      for (let site of this._sites) {
+        if (site.uri.spec === origin) {
+          site.userAction = "remove";
+          break;
+        }
+      }
+      this._list.removeChild(selected);
+      this._updateButtonsState();
+    }
+  },
+
+  saveChanges() {
+    let allowed = true;
+
+    // Confirm user really wants to remove site data starts
+    let removals = [];
+    this._sites = this._sites.filter(site => {
+      if (site.userAction === "remove") {
+        removals.push(site.uri);
+        return false;
+      }
+      return true;
+    });
+
+    if (removals.length > 0) {
+      if (this._sites.length == 0) {
+        // User selects all sites so equivalent to clearing all data
+        let flags =
+          Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0 +
+          Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1 +
+          Services.prompt.BUTTON_POS_0_DEFAULT;
+        let prefStrBundle = document.getElementById("bundlePreferences");
+        let title = prefStrBundle.getString("clearSiteDataPromptTitle");
+        let text = prefStrBundle.getString("clearSiteDataPromptText");
+        let btn0Label = prefStrBundle.getString("clearSiteDataNow");
+        let result = Services.prompt.confirmEx(window, title, text, flags, btn0Label, null, null, null, {});
+        allowed = result == 0;
+        if (allowed) {
+          SiteDataManager.removeAll();
+        }
+      } else {
+        // User only removes partial sites.
+        // We will remove cookies based on base domain, say, user selects "news.foo.com" to remove.
+        // The cookies under "music.foo.com" will be removed together.
+        // We have to prmopt user about this action.
+        let hostsTable = new Map();
+        // Group removed sites by base domain
+        for (let uri of removals) {
+          let baseDomain = Services.eTLD.getBaseDomain(uri);
+          let hosts = hostsTable.get(baseDomain);
+          if (!hosts) {
+            hosts = [];
+            hostsTable.set(baseDomain, hosts);
+          }
+          hosts.push(uri.host);
+        }
+        // Pick out sites with the same base domain as removed sites
+        for (let site of this._sites) {
+          let baseDomain = Services.eTLD.getBaseDomain(site.uri);
+          let hosts = hostsTable.get(baseDomain);
+          if (hosts) {
+            hosts.push(site.uri.host);
+          }
+        }
+
+        let args = {
+          hostsTable,
+          allowed: false
+        };
+        let features = "centerscreen,chrome,modal,resizable=no";
+        window.openDialog("chrome://browser/content/preferences/siteDataRemoveSelected.xul", "", features, args);
+        allowed = args.allowed;
+        if (allowed) {
+          SiteDataManager.remove(removals);
+        }
+      }
+    }
+    // Confirm user really wants to remove site data ends
+
+    this.close();
+  },
+
+  close() {
+    window.close();
   }
 };

@@ -968,7 +968,6 @@ nsStyleContext::CalcStyleDifferenceInternal(StyleContextLike* aNewContext,
 {
   PROFILER_LABEL("nsStyleContext", "CalcStyleDifference",
     js::ProfileEntry::Category::CSS);
-
   MOZ_ASSERT(NS_IsHintSubset(aParentHintsNotHandledForDescendants,
                              nsChangeHint_Hints_NotHandledForDescendants),
              "caller is passing inherited hints, but shouldn't be");
@@ -1223,8 +1222,10 @@ nsStyleContext::CalcStyleDifference(nsStyleContext* aNewContext,
                                     uint32_t* aEqualStructs,
                                     uint32_t* aSamePointerStructs)
 {
-  return CalcStyleDifferenceInternal(aNewContext, aParentHintsNotHandledForDescendants,
-                                     aEqualStructs, aSamePointerStructs);
+  return CalcStyleDifferenceInternal(aNewContext,
+                                     aParentHintsNotHandledForDescendants,
+                                     aEqualStructs,
+                                     aSamePointerStructs);
 }
 
 class MOZ_STACK_CLASS FakeStyleContext
@@ -1261,8 +1262,10 @@ nsStyleContext::CalcStyleDifference(const ServoComputedValues* aNewComputedValue
                                     uint32_t* aSamePointerStructs)
 {
   FakeStyleContext newContext(aNewComputedValues);
-  return CalcStyleDifferenceInternal(&newContext, aParentHintsNotHandledForDescendants,
-                                     aEqualStructs, aSamePointerStructs);
+  return CalcStyleDifferenceInternal(&newContext,
+                                     aParentHintsNotHandledForDescendants,
+                                     aEqualStructs,
+                                     aSamePointerStructs);
 }
 
 #ifdef DEBUG

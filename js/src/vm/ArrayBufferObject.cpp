@@ -37,6 +37,7 @@
 #endif
 #include "jswrapper.h"
 
+#include "builtin/DataViewObject.h"
 #include "gc/Barrier.h"
 #include "gc/Marking.h"
 #include "gc/Memory.h"
@@ -102,7 +103,7 @@ js::ToClampedIndex(JSContext* cx, HandleValue v, uint32_t length, uint32_t* out)
 static JSObject*
 CreateArrayBufferPrototype(JSContext* cx, JSProtoKey key)
 {
-    return cx->global()->createBlankPrototype(cx, &ArrayBufferObject::protoClass_);
+    return GlobalObject::createBlankPrototype(cx, cx->global(), &ArrayBufferObject::protoClass_);
 }
 
 static const ClassOps ArrayBufferObjectClassOps = {
@@ -280,18 +281,21 @@ ArrayBufferObject::class_constructor(JSContext* cx, unsigned argc, Value* vp)
     if (!ToIndex(cx, args.get(0), &byteLength))
         return false;
 
-    // Non-standard: Refuse to allocate buffers larger than ~2 GiB.
-    if (byteLength > INT32_MAX) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_BAD_ARRAY_LENGTH);
-        return false;
-    }
-
-    // Step 3.
+    // Step 3 (Inlined 24.1.1.1 AllocateArrayBuffer).
+    // 24.1.1.1, step 1 (Inlined 9.1.14 OrdinaryCreateFromConstructor).
     RootedObject proto(cx);
     RootedObject newTarget(cx, &args.newTarget().toObject());
     if (!GetPrototypeFromConstructor(cx, newTarget, &proto))
         return false;
 
+    // 24.1.1.1, step 3 (Inlined 6.2.6.1 CreateByteDataBlock, step 2).
+    // Refuse to allocate too large buffers, currently limited to ~2 GiB.
+    if (byteLength > INT32_MAX) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_BAD_ARRAY_LENGTH);
+        return false;
+    }
+
+    // 24.1.1.1, steps 1 and 4-6.
     JSObject* bufobj = create(cx, uint32_t(byteLength), proto);
     if (!bufobj)
         return false;
@@ -350,7 +354,7 @@ ArrayBufferObject::detach(JSContext* cx, Handle<ArrayBufferObject*> buffer,
     // Update all views of the buffer to account for the buffer having been
     // detached, and clear the buffer's data and list of views.
 
-    auto& innerViews = cx->compartment()->innerViews;
+    auto& innerViews = cx->compartment()->innerViews.get();
     if (InnerViewTable::ViewVector* views = innerViews.maybeViewsUnbarriered(buffer)) {
         for (size_t i = 0; i < views->length(); i++)
             NoteViewBufferWasDetached((*views)[i], newContents, cx);
@@ -398,7 +402,7 @@ ArrayBufferObject::changeViewContents(JSContext* cx, ArrayBufferViewObject* view
     // Watch out for NULL data pointers in views. This means that the view
     // is not fully initialized (in which case it'll be initialized later
     // with the correct pointer).
-    JS::AutoCheckCannotGC nogc(cx);
+    JS::AutoCheckCannotGC nogc;
     uint8_t* viewDataPointer = view->dataPointerUnshared(nogc);
     if (viewDataPointer) {
         MOZ_ASSERT(newContents);
@@ -425,7 +429,7 @@ ArrayBufferObject::changeContents(JSContext* cx, BufferContents newContents,
     setNewData(cx->runtime()->defaultFreeOp(), newContents, ownsState);
 
     // Update all views.
-    auto& innerViews = cx->compartment()->innerViews;
+    auto& innerViews = cx->compartment()->innerViews.get();
     if (InnerViewTable::ViewVector* views = innerViews.maybeViewsUnbarriered(this)) {
         for (size_t i = 0; i < views->length(); i++)
             changeViewContents(cx, (*views)[i], oldDataPointer, newContents);
@@ -1034,6 +1038,13 @@ ArrayBufferObject::create(JSContext* cx, uint32_t nbytes, BufferContents content
 {
     MOZ_ASSERT_IF(contents.kind() == MAPPED, contents);
 
+    // 24.1.1.1, step 3 (Inlined 6.2.6.1 CreateByteDataBlock, step 2).
+    // Refuse to allocate too large buffers, currently limited to ~2 GiB.
+    if (nbytes > INT32_MAX) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_BAD_ARRAY_LENGTH);
+        return nullptr;
+    }
+
     // If we need to allocate data, try to use a larger object size class so
     // that the array buffer's data can be allocated inline with the object.
     // The extra space will be left unused by the object's fixed slots and
@@ -1113,42 +1124,6 @@ ArrayBufferObject::createEmpty(JSContext* cx)
 
     obj->initEmpty();
     return obj;
-}
-
-bool
-ArrayBufferObject::createDataViewForThisImpl(JSContext* cx, const CallArgs& args)
-{
-    MOZ_ASSERT(IsArrayBufferMaybeShared(args.thisv()));
-
-    /*
-     * This method is only called for |DataView(alienBuf, ...)| which calls
-     * this as |createDataViewForThis.call(alienBuf, byteOffset, byteLength,
-     *                                     DataView.prototype)|,
-     * ergo there must be exactly 3 arguments.
-     */
-    MOZ_ASSERT(args.length() == 3);
-
-    uint32_t byteOffset = args[0].toPrivateUint32();
-    uint32_t byteLength = args[1].toPrivateUint32();
-    Rooted<ArrayBufferObjectMaybeShared*> buffer(cx);
-    buffer = &args.thisv().toObject().as<ArrayBufferObjectMaybeShared>();
-
-    /*
-     * Pop off the passed-along prototype and delegate to normal DataViewObject
-     * construction.
-     */
-    JSObject* obj = DataViewObject::create(cx, byteOffset, byteLength, buffer, &args[2].toObject());
-    if (!obj)
-        return false;
-    args.rval().setObject(*obj);
-    return true;
-}
-
-bool
-ArrayBufferObject::createDataViewForThis(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    return CallNonGenericMethod<IsArrayBufferMaybeShared, createDataViewForThisImpl>(cx, args);
 }
 
 /* static */ ArrayBufferObject::BufferContents
@@ -1250,15 +1225,16 @@ ArrayBufferObject::finalize(FreeOp* fop, JSObject* obj)
 }
 
 /* static */ void
-ArrayBufferObject::copyData(Handle<ArrayBufferObject*> toBuffer,
-                            Handle<ArrayBufferObject*> fromBuffer,
-                            uint32_t fromIndex, uint32_t count)
+ArrayBufferObject::copyData(Handle<ArrayBufferObject*> toBuffer, uint32_t toIndex,
+                            Handle<ArrayBufferObject*> fromBuffer, uint32_t fromIndex,
+                            uint32_t count)
 {
     MOZ_ASSERT(toBuffer->byteLength() >= count);
+    MOZ_ASSERT(toBuffer->byteLength() >= toIndex + count);
     MOZ_ASSERT(fromBuffer->byteLength() >= fromIndex);
     MOZ_ASSERT(fromBuffer->byteLength() >= fromIndex + count);
 
-    memcpy(toBuffer->dataPointer(), fromBuffer->dataPointer() + fromIndex, count);
+    memcpy(toBuffer->dataPointer() + toIndex, fromBuffer->dataPointer() + fromIndex, count);
 }
 
 /* static */ void
@@ -1508,8 +1484,8 @@ ArrayBufferViewObject::trace(JSTracer* trc, JSObject* objArg)
                 // We can't use a direct forwarding pointer here, as there might
                 // not be enough bytes available, and other views might have data
                 // pointers whose forwarding pointers would overlap this one.
-                trc->runtime()->gc.nursery.maybeSetForwardingPointer(trc, srcData, dstData,
-                                                                     /* direct = */ false);
+                Nursery& nursery = obj->zoneFromAnyThread()->group()->nursery();
+                nursery.maybeSetForwardingPointer(trc, srcData, dstData, /* direct = */ false);
             } else {
                 MOZ_ASSERT_IF(buf.dataPointer() == nullptr, offset == 0);
 
@@ -1644,7 +1620,7 @@ JS_GetArrayBufferData(JSObject* obj, bool* isSharedMemory, const JS::AutoCheckCa
 JS_FRIEND_API(bool)
 JS_DetachArrayBuffer(JSContext* cx, HandleObject obj)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, obj);
 
@@ -1682,7 +1658,7 @@ JS_IsDetachedArrayBufferObject(JSObject* obj)
 JS_FRIEND_API(JSObject*)
 JS_NewArrayBuffer(JSContext* cx, uint32_t nbytes)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     MOZ_ASSERT(nbytes <= INT32_MAX);
     return ArrayBufferObject::create(cx, nbytes);
@@ -1691,7 +1667,7 @@ JS_NewArrayBuffer(JSContext* cx, uint32_t nbytes)
 JS_PUBLIC_API(JSObject*)
 JS_NewArrayBufferWithContents(JSContext* cx, size_t nbytes, void* data)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     MOZ_ASSERT_IF(!data, nbytes == 0);
     ArrayBufferObject::BufferContents contents =
@@ -1703,7 +1679,7 @@ JS_NewArrayBufferWithContents(JSContext* cx, size_t nbytes, void* data)
 JS_PUBLIC_API(JSObject*)
 JS_NewArrayBufferWithExternalContents(JSContext* cx, size_t nbytes, void* data)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     MOZ_ASSERT_IF(!data, nbytes == 0);
     ArrayBufferObject::BufferContents contents =
@@ -1744,7 +1720,7 @@ js::UnwrapSharedArrayBuffer(JSObject* obj)
 JS_PUBLIC_API(void*)
 JS_ExternalizeArrayBufferContents(JSContext* cx, HandleObject obj)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, obj);
 
@@ -1776,7 +1752,7 @@ JS_ExternalizeArrayBufferContents(JSContext* cx, HandleObject obj)
 JS_PUBLIC_API(void*)
 JS_StealArrayBufferContents(JSContext* cx, HandleObject objArg)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, objArg);
 
@@ -1813,7 +1789,7 @@ JS_StealArrayBufferContents(JSContext* cx, HandleObject objArg)
 JS_PUBLIC_API(JSObject*)
 JS_NewMappedArrayBufferWithContents(JSContext* cx, size_t nbytes, void* data)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
 
     MOZ_ASSERT(data);
@@ -1865,7 +1841,7 @@ JS_GetArrayBufferViewData(JSObject* obj, bool* isSharedMemory, const JS::AutoChe
 JS_FRIEND_API(JSObject*)
 JS_GetArrayBufferViewBuffer(JSContext* cx, HandleObject objArg, bool* isSharedMemory)
 {
-    AssertHeapIsIdle(cx);
+    AssertHeapIsIdle();
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, objArg);
 

@@ -8,13 +8,15 @@ const I = require("devtools/client/shared/vendor/immutable");
 const {
   OPEN_SIDEBAR,
   OPEN_STATISTICS,
+  SELECT_DETAILS_PANEL_TAB,
   WATERFALL_RESIZE,
 } = require("../constants");
 
 const UI = I.Record({
+  detailsPanelSelectedTab: "headers",
   sidebarOpen: false,
   statisticsOpen: false,
-  waterfallWidth: 300,
+  waterfallWidth: null,
 });
 
 // Safe bounds for waterfall width (px)
@@ -32,12 +34,18 @@ function openStatistics(state, action) {
   return state.set("statisticsOpen", action.open);
 }
 
+function setDetailsPanelTab(state, action) {
+  return state.set("detailsPanelSelectedTab", action.id);
+}
+
 function ui(state = new UI(), action) {
   switch (action.type) {
     case OPEN_SIDEBAR:
       return openSidebar(state, action);
     case OPEN_STATISTICS:
       return openStatistics(state, action);
+    case SELECT_DETAILS_PANEL_TAB:
+      return setDetailsPanelTab(state, action);
     case WATERFALL_RESIZE:
       return resizeWaterfall(state, action);
     default:

@@ -79,7 +79,7 @@ add_task(function* test() {
     for (let i = 0; i < signonsTree.view.rowCount; i++) {
       order.push(signonsTree.view.getCellText(i, column));
     }
-    return order.join(',');
+    return order.join(",");
   }
 
   function getLoginPassword() {
@@ -120,7 +120,7 @@ add_task(function* test() {
         break;
       case 9: // finish
         Services.obs.removeObserver(
-          testObserver, "passwordmgr-dialog-updated", false);
+          testObserver, "passwordmgr-dialog-updated");
         pmDialog.close();
         resolve();
         break;

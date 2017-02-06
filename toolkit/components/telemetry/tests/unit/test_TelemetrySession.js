@@ -98,13 +98,13 @@ function sendPing() {
 }
 
 function fakeGenerateUUID(sessionFunc, subsessionFunc) {
-  let session = Cu.import("resource://gre/modules/TelemetrySession.jsm");
+  let session = Cu.import("resource://gre/modules/TelemetrySession.jsm", {});
   session.Policy.generateSessionUUID = sessionFunc;
   session.Policy.generateSubsessionUUID = subsessionFunc;
 }
 
 function fakeIdleNotification(topic) {
-  let session = Cu.import("resource://gre/modules/TelemetrySession.jsm");
+  let session = Cu.import("resource://gre/modules/TelemetrySession.jsm", {});
   return session.TelemetryScheduler.observe(null, topic, null);
 }
 
@@ -427,8 +427,8 @@ function checkPayload(payload, reason, successfulPings, savedPings) {
   // Telemetry doesn't touch a memory reporter with these units that's
   // available on all platforms.
 
-  Assert.ok('MEMORY_JS_GC_HEAP' in payload.histograms); // UNITS_BYTES
-  Assert.ok('MEMORY_JS_COMPARTMENTS_SYSTEM' in payload.histograms); // UNITS_COUNT
+  Assert.ok("MEMORY_JS_GC_HEAP" in payload.histograms); // UNITS_BYTES
+  Assert.ok("MEMORY_JS_COMPARTMENTS_SYSTEM" in payload.histograms); // UNITS_COUNT
 
   // We should have included addon histograms.
   Assert.ok("addonHistograms" in payload);
@@ -715,6 +715,9 @@ add_task(function* test_checkSubsessionEvents() {
   // Clear the events.
   Telemetry.clearEvents();
   yield TelemetryController.testReset();
+
+  // Enable recording for the test events.
+  Telemetry.setEventRecordingEnabled("telemetry.test", true);
 
   // Record some events.
   let expected = [

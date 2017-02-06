@@ -38,7 +38,7 @@ public:
   GetValidatedOriginAttributes(const SerializedLoadContext& aSerialized,
                                PContentParent* aBrowser,
                                nsIPrincipal* aRequestingPrincipal,
-                               mozilla::DocShellOriginAttributes& aAttrs);
+                               mozilla::OriginAttributes& aAttrs);
 
   /*
    * Creates LoadContext for parent-side of an e10s channel.
@@ -209,13 +209,13 @@ protected:
   virtual mozilla::ipc::IPCResult RecvPredPredict(const ipc::OptionalURIParams& aTargetURI,
                                                   const ipc::OptionalURIParams& aSourceURI,
                                                   const PredictorPredictReason& aReason,
-                                                  const IPC::SerializedLoadContext& aLoadContext,
+                                                  const OriginAttributes& aOriginAttributes,
                                                   const bool& hasVerifier) override;
 
   virtual mozilla::ipc::IPCResult RecvPredLearn(const ipc::URIParams& aTargetURI,
                                                 const ipc::OptionalURIParams& aSourceURI,
                                                 const PredictorPredictReason& aReason,
-                                                const IPC::SerializedLoadContext& aLoadContext) override;
+                                                const OriginAttributes& aOriginAttributes) override;
   virtual mozilla::ipc::IPCResult RecvPredReset() override;
 
   virtual mozilla::ipc::IPCResult RecvRemoveRequestContext(const nsCString& rcid) override;

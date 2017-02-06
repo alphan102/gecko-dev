@@ -516,7 +516,7 @@
         <parameter name="aItem"/>
         <body>
         <![CDATA[
-          var style = document.defaultView.getComputedStyle(aItem, "");
+          var style = document.defaultView.getComputedStyle(aItem);
           return style.display != "none" && style.visibility == "visible";
         ]]>
         </body>
@@ -1033,11 +1033,11 @@
                 onget="return this.getAttribute('checked') == 'true';">
         <setter><![CDATA[
           if (val)
-            this.setAttribute('checked', 'true');
+            this.setAttribute("checked", "true");
           else
-            this.removeAttribute('checked');
-          var event = document.createEvent('Events');
-          event.initEvent('CheckboxStateChange', true, true);
+            this.removeAttribute("checked");
+          var event = document.createEvent("Events");
+          event.initEvent("CheckboxStateChange", true, true);
           this.dispatchEvent(event);
           return val;
         ]]></setter>

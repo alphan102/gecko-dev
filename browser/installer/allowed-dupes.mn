@@ -24,7 +24,6 @@ browser/chrome/browser/skin/classic/browser/addons/addon-install-confirm.svg
 browser/chrome/browser/skin/classic/browser/connection-secure.svg
 browser/chrome/browser/skin/classic/browser/controlcenter/warning-gray.svg
 browser/chrome/browser/skin/classic/browser/newtab/close.png
-browser/chrome/browser/skin/classic/browser/theme-switcher-icon.png
 # devtools reduction is bug 1311178
 browser/chrome/devtools/content/dom/content/dom-view.css
 browser/chrome/devtools/content/dom/dom.html
@@ -49,8 +48,10 @@ browser/chrome/devtools/modules/devtools/client/projecteditor/lib/helpers/readdi
 browser/chrome/devtools/modules/devtools/client/shared/frame-script-utils.js
 browser/chrome/devtools/modules/devtools/client/shared/theme-switching.js
 browser/chrome/devtools/modules/devtools/client/themes/common.css
+browser/chrome/devtools/modules/devtools/client/themes/toolbars.css
 browser/chrome/devtools/modules/devtools/client/themes/variables.css
 browser/chrome/devtools/skin/common.css
+browser/chrome/devtools/skin/toolbars.css
 browser/chrome/devtools/skin/images/command-scratchpad.svg
 browser/chrome/devtools/skin/images/controls.png
 browser/chrome/devtools/skin/images/controls@2x.png
@@ -219,6 +220,5 @@ res/table-remove-row-active.gif
 res/table-remove-row-hover.gif
 res/table-remove-row.gif
 # Aurora branding
-browser/chrome/browser/content/browser/defaultthemes/devedition.icon.png
 browser/chrome/browser/content/branding/icon64.png
 browser/chrome/devtools/content/framework/dev-edition-promo/dev-edition-logo.png

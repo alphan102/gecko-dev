@@ -62,8 +62,8 @@ js::AutoEnterPolicy::recordEnter(JSContext* cx, HandleObject proxy, HandleId id,
         enteredProxy.emplace(proxy);
         enteredId.emplace(id);
         enteredAction = act;
-        prev = cx->runtime()->enteredPolicy;
-        cx->runtime()->enteredPolicy = this;
+        prev = cx->enteredPolicy;
+        cx->enteredPolicy = this;
     }
 }
 
@@ -71,8 +71,8 @@ void
 js::AutoEnterPolicy::recordLeave()
 {
     if (enteredProxy) {
-        MOZ_ASSERT(context->runtime()->enteredPolicy == this);
-        context->runtime()->enteredPolicy = prev;
+        MOZ_ASSERT(context->enteredPolicy == this);
+        context->enteredPolicy = prev;
     }
 }
 
@@ -81,10 +81,10 @@ js::assertEnteredPolicy(JSContext* cx, JSObject* proxy, jsid id,
                         BaseProxyHandler::Action act)
 {
     MOZ_ASSERT(proxy->is<ProxyObject>());
-    MOZ_ASSERT(cx->runtime()->enteredPolicy);
-    MOZ_ASSERT(cx->runtime()->enteredPolicy->enteredProxy->get() == proxy);
-    MOZ_ASSERT(cx->runtime()->enteredPolicy->enteredId->get() == id);
-    MOZ_ASSERT(cx->runtime()->enteredPolicy->enteredAction & act);
+    MOZ_ASSERT(cx->enteredPolicy);
+    MOZ_ASSERT(cx->enteredPolicy->enteredProxy->get() == proxy);
+    MOZ_ASSERT(cx->enteredPolicy->enteredId->get() == id);
+    MOZ_ASSERT(cx->enteredPolicy->enteredAction & act);
 }
 #endif
 
@@ -566,18 +566,18 @@ Proxy::trace(JSTracer* trc, JSObject* proxy)
 
 static bool
 proxy_LookupProperty(JSContext* cx, HandleObject obj, HandleId id,
-                     MutableHandleObject objp, MutableHandleShape propp)
+                     MutableHandleObject objp, MutableHandle<JS::PropertyResult> propp)
 {
     bool found;
     if (!Proxy::has(cx, obj, id, &found))
         return false;
 
     if (found) {
-        MarkNonNativePropertyFound<CanGC>(propp);
+        propp.setNonNativeProperty();
         objp.set(obj);
     } else {
+        propp.setNotFound();
         objp.set(nullptr);
-        propp.set(nullptr);
     }
     return true;
 }
@@ -598,7 +598,7 @@ ProxyObject::trace(JSTracer* trc, JSObject* obj)
     TraceEdge(trc, &proxy->shape_, "ProxyObject_shape");
 
 #ifdef DEBUG
-    if (trc->runtime()->gc.isStrictProxyCheckingEnabled() && proxy->is<WrapperObject>()) {
+    if (TlsContext.get()->isStrictProxyCheckingEnabled() && proxy->is<WrapperObject>()) {
         JSObject* referent = MaybeForwarded(proxy->target());
         if (referent->compartment() != proxy->compartment()) {
             /*
@@ -744,9 +744,9 @@ js::InitProxyClass(JSContext* cx, HandleObject obj)
         JS_FS_END
     };
 
-    Rooted<GlobalObject*> global(cx, &obj->as<GlobalObject>());
+    Handle<GlobalObject*> global = obj.as<GlobalObject>();
     RootedFunction ctor(cx);
-    ctor = global->createConstructor(cx, proxy, cx->names().Proxy, 2);
+    ctor = GlobalObject::createConstructor(cx, proxy, cx->names().Proxy, 2);
     if (!ctor)
         return nullptr;
 

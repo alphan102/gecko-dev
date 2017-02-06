@@ -7,16 +7,16 @@ load 266225-1.html
 load 310426-1.xhtml
 load 310520-1.xhtml
 load 315752-1.xhtml
-asserts-if(stylo,2) load 317502-1.xhtml # bug 1324663
+load 317502-1.xhtml
 load 321894.html
 load 323499-1.html
 load 343510-1.html
 load 363696-1.xul
 load 363696-2.html
 load 363696-3.html
-asserts-if(stylo,3) load 366205-1.html # bug 1324663
+load 366205-1.html
 load 366537-1.xhtml
-asserts-if(stylo,1) load 367587-1.html # bug 1324663
+load 367587-1.html
 load 370703-1.html
 load 370940-1.html
 load 370967.html
@@ -63,7 +63,7 @@ load 960277-2.html
 load 997709-1.html
 load 1102791.html
 skip-if(stylo) load 1140216.html # bug 1323693
-asserts-if(stylo,11) load 1182414.html # bug 1324687
+asserts-if(stylo,9) load 1182414.html # bug 1324687
 load 1212688.html
 load 1228670.xhtml
-asserts-if(stylo,5) load 1279354.html # bug 1324671
+asserts-if(stylo,4-5) load 1279354.html # bug 1324671

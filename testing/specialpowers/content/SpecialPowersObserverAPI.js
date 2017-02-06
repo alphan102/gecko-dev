@@ -179,7 +179,7 @@ SpecialPowersObserverAPI.prototype = {
   },
 
   _getURI: function (url) {
-    return Services.io.newURI(url, null, null);
+    return Services.io.newURI(url);
   },
 
   _readUrlAsString: function(aUrl) {
@@ -208,14 +208,8 @@ SpecialPowersObserverAPI.prototype = {
     input.close();
 
     var status;
-    try {
-      channel.QueryInterface(Ci.nsIHttpChannel);
+    if (channel instanceof Ci.nsIHttpChannel) {
       status = channel.responseStatus;
-    } catch(e) {
-      /* The channel is not a nsIHttpCHannel, but that's fine */
-      dump("-*- _readUrlAsString: Got an error while fetching " +
-           "chrome script '" + aUrl + "': (" + e.name + ") " + e.message + ". " +
-           "Ignoring.\n");
     }
 
     if (status == 404) {
@@ -383,7 +377,7 @@ SpecialPowersObserverAPI.prototype = {
             let hasPerm = Services.perms.testPermissionFromPrincipal(principal, msg.type);
             return hasPerm == Ci.nsIPermissionManager.ALLOW_ACTION;
           case "test":
-            let testPerm = Services.perms.testPermissionFromPrincipal(principal, msg.type, msg.value);
+            let testPerm = Services.perms.testPermissionFromPrincipal(principal, msg.type);
             return testPerm == msg.value;
           default:
             throw new SpecialPowersError(
@@ -508,7 +502,7 @@ SpecialPowersObserverAPI.prototype = {
       case "SPCleanUpSTSData": {
         let origin = aMessage.data.origin;
         let flags = aMessage.data.flags;
-        let uri = Services.io.newURI(origin, null, null);
+        let uri = Services.io.newURI(origin);
         let sss = Cc["@mozilla.org/ssservice;1"].
                   getService(Ci.nsISiteSecurityService);
         sss.removeState(Ci.nsISiteSecurityService.HEADER_HSTS, uri, flags);

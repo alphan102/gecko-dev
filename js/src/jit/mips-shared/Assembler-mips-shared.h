@@ -730,7 +730,7 @@ PatchJump(CodeLocationJump& jump_, CodeLocationLabel label,
           ReprotectCode reprotect = DontReprotect);
 
 void
-PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitRuntime::BackedgeTarget target);
+PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitZoneGroup::BackedgeTarget target);
 
 typedef js::jit::AssemblerBuffer<1024, Instruction> MIPSBuffer;
 
@@ -1523,6 +1523,12 @@ class InstGS : public Instruction
       : Instruction(op | RS(rs) | RT(rt) | off.encode(6) | ff)
     { }
 };
+
+inline bool
+IsUnaligned(const wasm::MemoryAccessDesc& access)
+{
+    return access.align() && access.align() < access.byteSize();
+}
 
 } // namespace jit
 } // namespace js

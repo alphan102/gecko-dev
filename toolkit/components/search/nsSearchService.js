@@ -935,7 +935,7 @@ function sanitizeName(aName) {
 
   // Use a random name if our input had no valid characters.
   if (name.length < minLength)
-    name = Math.random().toString(36).replace(/^.*\./, '');
+    name = Math.random().toString(36).replace(/^.*\./, "");
 
   // Force max length.
   return name.substring(0, maxLength);
@@ -2558,6 +2558,7 @@ Engine.prototype = {
    * @param  options
    *         An object that must contain the following fields:
    *         {window} the content window for the window performing the search
+   *         {originAttributes} the originAttributes for performing the search
    *
    * @throws NS_ERROR_INVALID_ARG if options is omitted or lacks required
    *         elemeents
@@ -2576,12 +2577,26 @@ Engine.prototype = {
                            .getInterface(Components.interfaces.nsIWebNavigation)
                            .QueryInterface(Components.interfaces.nsILoadContext);
 
-    connector.speculativeConnect(searchURI, callbacks);
+    // Using the codebase principal which is constructed by the search URI
+    // and given originAttributes. If originAttributes are not given, we
+    // fallback to use the docShell's originAttributes.
+    let attrs = options.originAttributes;
+
+    if (!attrs) {
+      attrs = options.window.document
+                            .docShell
+                            .getOriginAttributes();
+    }
+
+    let principal = Services.scriptSecurityManager
+                            .createCodebasePrincipal(searchURI, attrs);
+
+    connector.speculativeConnect2(searchURI, principal, callbacks);
 
     if (this.supportsResponseType(URLTYPE_SUGGEST_JSON)) {
       let suggestURI = this.getSubmission("dummy", URLTYPE_SUGGEST_JSON).uri;
       if (suggestURI.prePath != searchURI.prePath)
-        connector.speculativeConnect(suggestURI, callbacks);
+        connector.speculativeConnect2(suggestURI, principal, callbacks);
     }
   },
 };
@@ -3635,22 +3650,24 @@ SearchService.prototype = {
       return;
     }
 
-    let jarNames = new Set();
-    for (let region in searchSettings) {
-      // Artifact builds use the full list.json which parses
-      // slightly differently
-      if (!("visibleDefaultEngines" in searchSettings[region])) {
-        continue;
-      }
-      for (let engine of searchSettings[region]["visibleDefaultEngines"]) {
-        jarNames.add(engine);
-      }
-    }
-
     // Check if we have a useable country specific list of visible default engines.
+    // This will only be set if we got the list from the Mozilla search server;
+    // it will not be set for distributions.
     let engineNames;
     let visibleDefaultEngines = this.getVerifiedGlobalAttr("visibleDefaultEngines");
     if (visibleDefaultEngines) {
+      let jarNames = new Set();
+      for (let region in searchSettings) {
+        // Artifact builds use the full list.json which parses
+        // slightly differently
+        if (!("visibleDefaultEngines" in searchSettings[region])) {
+          continue;
+        }
+        for (let engine of searchSettings[region]["visibleDefaultEngines"]) {
+          jarNames.add(engine);
+        }
+      }
+
       engineNames = visibleDefaultEngines.split(",");
       for (let engineName of engineNames) {
         // If all engineName values are part of jarNames,

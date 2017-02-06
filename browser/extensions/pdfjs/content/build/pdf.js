@@ -23,8 +23,8 @@
  }
 }(this, function (exports) {
  'use strict';
- var pdfjsVersion = '1.6.418';
- var pdfjsBuild = '59afb4b9';
+ var pdfjsVersion = '1.7.242';
+ var pdfjsBuild = '6f0cf8c4';
  var pdfjsFilePath = typeof document !== 'undefined' && document.currentScript ? document.currentScript.src : null;
  var pdfjsLibs = {};
  (function pdfjsWrapper() {
@@ -1434,6 +1434,7 @@
    var warn = sharedUtil.warn;
    var deprecated = sharedUtil.deprecated;
    var createValidAbsoluteUrl = sharedUtil.createValidAbsoluteUrl;
+   var DEFAULT_LINK_REL = 'noopener noreferrer nofollow';
    var CustomStyle = function CustomStyleClosure() {
     var prefixes = [
      'ms',
@@ -1559,7 +1560,7 @@
      globalSettings.externalLinkTarget = LinkTarget.NONE;
      return LinkTarget.NONE;
     case 'externalLinkRel':
-     return globalSettings ? globalSettings.externalLinkRel : 'noreferrer';
+     return globalSettings ? globalSettings.externalLinkRel : DEFAULT_LINK_REL;
     case 'enableStats':
      return !!(globalSettings && globalSettings.enableStats);
     default:
@@ -1591,6 +1592,7 @@
    exports.LinkTarget = LinkTarget;
    exports.hasCanvasTypedArrays = hasCanvasTypedArrays;
    exports.getDefaultSetting = getDefaultSetting;
+   exports.DEFAULT_LINK_REL = DEFAULT_LINK_REL;
   }));
   (function (root, factory) {
    factory(root.pdfjsDisplayFontLoader = {}, root.pdfjsSharedUtil);
@@ -1786,6 +1788,7 @@
   }(this, function (exports, sharedUtil, displayDOMUtils) {
    var AnnotationBorderStyleType = sharedUtil.AnnotationBorderStyleType;
    var AnnotationType = sharedUtil.AnnotationType;
+   var stringToPDFString = sharedUtil.stringToPDFString;
    var Util = sharedUtil.Util;
    var addLinkAttributes = displayDOMUtils.addLinkAttributes;
    var LinkTarget = displayDOMUtils.LinkTarget;
@@ -1813,9 +1816,8 @@
         return new RadioButtonWidgetAnnotationElement(parameters);
        } else if (parameters.data.checkBox) {
         return new CheckboxWidgetAnnotationElement(parameters);
-       } else {
-        warn('Unimplemented button widget annotation: pushbutton');
        }
+       warn('Unimplemented button widget annotation: pushbutton');
        break;
       case 'Ch':
        return new ChoiceWidgetAnnotationElement(parameters);
@@ -2329,8 +2331,14 @@
    var FileAttachmentAnnotationElement = function FileAttachmentAnnotationElementClosure() {
     function FileAttachmentAnnotationElement(parameters) {
      AnnotationElement.call(this, parameters, true);
-     this.filename = getFilenameFromUrl(parameters.data.file.filename);
-     this.content = parameters.data.file.content;
+     var file = this.data.file;
+     this.filename = getFilenameFromUrl(file.filename);
+     this.content = file.content;
+     this.linkService.onFileAttachmentAnnotation({
+      id: stringToPDFString(file.filename),
+      filename: file.filename,
+      content: file.content
+     });
     }
     Util.inherit(FileAttachmentAnnotationElement, AnnotationElement, {
      render: function FileAttachmentAnnotationElement_render() {
@@ -2364,7 +2372,7 @@
        if (!data) {
         continue;
        }
-       var properties = {
+       var element = annotationElementFactory.create({
         data: data,
         layer: parameters.div,
         page: parameters.page,
@@ -2373,8 +2381,7 @@
         downloadManager: parameters.downloadManager,
         imageResourcesPath: parameters.imageResourcesPath || getDefaultSetting('imageResourcesPath'),
         renderInteractiveForms: parameters.renderInteractiveForms || false
-       };
-       var element = annotationElementFactory.create(properties);
+       });
        if (element.isRenderable) {
         parameters.div.appendChild(element.render());
        }
@@ -4692,13 +4699,7 @@
        needRestore = true;
       }
       if (this.pendingEOFill) {
-       if (ctx.mozFillRule !== undefined) {
-        ctx.mozFillRule = 'evenodd';
-        ctx.fill();
-        ctx.mozFillRule = 'nonzero';
-       } else {
-        ctx.fill('evenodd');
-       }
+       ctx.fill('evenodd');
        this.pendingEOFill = false;
       } else {
        ctx.fill();
@@ -5085,15 +5086,13 @@
       }
       return pattern;
      },
-     setStrokeColorN: function CanvasGraphics_setStrokeColorN()
-      {
-       this.current.strokeColor = this.getColorN_Pattern(arguments);
-      },
-     setFillColorN: function CanvasGraphics_setFillColorN()
-      {
-       this.current.fillColor = this.getColorN_Pattern(arguments);
-       this.current.patternFill = true;
-      },
+     setStrokeColorN: function CanvasGraphics_setStrokeColorN() {
+      this.current.strokeColor = this.getColorN_Pattern(arguments);
+     },
+     setFillColorN: function CanvasGraphics_setFillColorN() {
+      this.current.fillColor = this.getColorN_Pattern(arguments);
+      this.current.patternFill = true;
+     },
      setStrokeRGBColor: function CanvasGraphics_setStrokeRGBColor(r, g, b) {
       var color = Util.makeCssRgb(r, g, b);
       this.ctx.strokeStyle = color;
@@ -5532,13 +5531,7 @@
       var ctx = this.ctx;
       if (this.pendingClip) {
        if (this.pendingClip === EO_CLIP) {
-        if (ctx.mozFillRule !== undefined) {
-         ctx.mozFillRule = 'evenodd';
-         ctx.clip();
-         ctx.mozFillRule = 'nonzero';
-        } else {
-         ctx.clip('evenodd');
-        }
+        ctx.clip('evenodd');
        } else {
         ctx.clip();
        }
@@ -5578,7 +5571,6 @@
    var MessageHandler = sharedUtil.MessageHandler;
    var MissingPDFException = sharedUtil.MissingPDFException;
    var PageViewport = sharedUtil.PageViewport;
-   var PasswordResponses = sharedUtil.PasswordResponses;
    var PasswordException = sharedUtil.PasswordException;
    var StatTimer = sharedUtil.StatTimer;
    var UnexpectedResponseException = sharedUtil.UnexpectedResponseException;
@@ -6330,6 +6322,7 @@
      this.fontLoader = new FontLoader(loadingTask.docId);
      this.destroyed = false;
      this.destroyCapability = null;
+     this._passwordCapability = null;
      this.pageCache = [];
      this.pagePromises = [];
      this.downloadInfoCapability = createPromiseCapability();
@@ -6342,6 +6335,9 @@
       }
       this.destroyed = true;
       this.destroyCapability = createPromiseCapability();
+      if (this._passwordCapability) {
+       this._passwordCapability.reject(new Error('Worker was destroyed during onPassword callback'));
+      }
       var waitOn = [];
       this.pageCache.forEach(function (page) {
        if (page) {
@@ -6369,9 +6365,7 @@
      },
      setupMessageHandler: function WorkerTransport_setupMessageHandler() {
       var messageHandler = this.messageHandler;
-      function updatePassword(password) {
-       messageHandler.send('UpdatePassword', password);
-      }
+      var loadingTask = this.loadingTask;
       var pdfDataRangeTransport = this.pdfDataRangeTransport;
       if (pdfDataRangeTransport) {
        pdfDataRangeTransport.addRangeListener(function (begin, chunk) {
@@ -6398,18 +6392,19 @@
        this.pdfDocument = pdfDocument;
        loadingTask._capability.resolve(pdfDocument);
       }, this);
-      messageHandler.on('NeedPassword', function transportNeedPassword(exception) {
-       var loadingTask = this.loadingTask;
+      messageHandler.on('PasswordRequest', function transportPasswordRequest(exception) {
+       this._passwordCapability = createPromiseCapability();
        if (loadingTask.onPassword) {
-        return loadingTask.onPassword(updatePassword, PasswordResponses.NEED_PASSWORD);
+        var updatePassword = function (password) {
+         this._passwordCapability.resolve({ password: password });
+        }.bind(this);
+        loadingTask.onPassword(updatePassword, exception.code);
+       } else {
+        this._passwordCapability.reject(new PasswordException(exception.message, exception.code));
        }
-       loadingTask._capability.reject(new PasswordException(exception.message, exception.code));
+       return this._passwordCapability.promise;
       }, this);
-      messageHandler.on('IncorrectPassword', function transportIncorrectPassword(exception) {
-       var loadingTask = this.loadingTask;
-       if (loadingTask.onPassword) {
-        return loadingTask.onPassword(updatePassword, PasswordResponses.INCORRECT_PASSWORD);
-       }
+      messageHandler.on('PasswordException', function transportPasswordException(exception) {
        loadingTask._capability.reject(new PasswordException(exception.message, exception.code));
       }, this);
       messageHandler.on('InvalidPDF', function transportInvalidPDF(exception) {
@@ -6720,9 +6715,8 @@
       var objs = this.objs;
       if (!objs[objId]) {
        return false;
-      } else {
-       return objs[objId].resolved;
       }
+      return objs[objId].resolved;
      },
      hasData: function PDFObjects_hasData(objId) {
       return this.isResolved(objId);
@@ -6731,9 +6725,8 @@
       var objs = this.objs;
       if (!objs[objId] || !objs[objId].resolved) {
        return null;
-      } else {
-       return objs[objId].data;
       }
+      return objs[objId].data;
      },
      clear: function PDFObjects_clear() {
       this.objs = Object.create(null);
@@ -6824,7 +6817,7 @@
        return;
       }
       if (this.task.onContinue) {
-       this.task.onContinue.call(this.task, this._scheduleNextBound);
+       this.task.onContinue(this._scheduleNextBound);
       } else {
        this._scheduleNext();
       }
@@ -6886,6 +6879,7 @@
    var deprecated = sharedUtil.deprecated;
    var warn = sharedUtil.warn;
    var LinkTarget = displayDOMUtils.LinkTarget;
+   var DEFAULT_LINK_REL = displayDOMUtils.DEFAULT_LINK_REL;
    var isWorker = typeof window === 'undefined';
    if (!globalScope.PDFJS) {
     globalScope.PDFJS = {};
@@ -6953,7 +6947,7 @@
    PDFJS.disableCreateObjectURL = PDFJS.disableCreateObjectURL === undefined ? false : PDFJS.disableCreateObjectURL;
    PDFJS.disableWebGL = PDFJS.disableWebGL === undefined ? true : PDFJS.disableWebGL;
    PDFJS.externalLinkTarget = PDFJS.externalLinkTarget === undefined ? LinkTarget.NONE : PDFJS.externalLinkTarget;
-   PDFJS.externalLinkRel = PDFJS.externalLinkRel === undefined ? 'noreferrer' : PDFJS.externalLinkRel;
+   PDFJS.externalLinkRel = PDFJS.externalLinkRel === undefined ? DEFAULT_LINK_REL : PDFJS.externalLinkRel;
    PDFJS.isEvalSupported = PDFJS.isEvalSupported === undefined ? true : PDFJS.isEvalSupported;
    PDFJS.getDocument = displayAPI.getDocument;
    PDFJS.PDFDataRangeTransport = displayAPI.PDFDataRangeTransport;
@@ -6989,6 +6983,7 @@
  exports.renderTextLayer = pdfjsLibs.pdfjsDisplayTextLayer.renderTextLayer;
  exports.AnnotationLayer = pdfjsLibs.pdfjsDisplayAnnotationLayer.AnnotationLayer;
  exports.CustomStyle = pdfjsLibs.pdfjsDisplayDOMUtils.CustomStyle;
+ exports.createPromiseCapability = pdfjsLibs.pdfjsSharedUtil.createPromiseCapability;
  exports.PasswordResponses = pdfjsLibs.pdfjsSharedUtil.PasswordResponses;
  exports.InvalidPDFException = pdfjsLibs.pdfjsSharedUtil.InvalidPDFException;
  exports.MissingPDFException = pdfjsLibs.pdfjsSharedUtil.MissingPDFException;

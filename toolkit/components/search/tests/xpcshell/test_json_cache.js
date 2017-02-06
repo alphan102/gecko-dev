@@ -26,7 +26,7 @@ function getDir(aKey, aIFace) {
 }
 
 function makeURI(uri) {
-  return Services.io.newURI(uri, null, null);
+  return Services.io.newURI(uri);
 }
 
 var cacheTemplate, appPluginsPath, profPlugins;
@@ -37,8 +37,6 @@ var cacheTemplate, appPluginsPath, profPlugins;
 function run_test() {
   removeMetadata();
   removeCacheFile();
-
-  updateAppInfo();
 
   let cacheTemplateFile = do_get_file("data/search.json");
   cacheTemplate = readJSONFile(cacheTemplateFile);

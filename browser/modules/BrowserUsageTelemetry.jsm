@@ -152,7 +152,7 @@ let URICountListener = {
 
     // Don't count about:blank and similar pages, as they would artificially
     // inflate the counts.
-    if (browser.ownerDocument.defaultView.gInitialPages.includes(uriSpec)) {
+    if (browser.ownerGlobal.gInitialPages.includes(uriSpec)) {
       return;
     }
 
@@ -212,7 +212,7 @@ let urlbarListener = {
   },
 
   uninit() {
-    Services.obs.removeObserver(this, AUTOCOMPLETE_ENTER_TEXT_TOPIC, true);
+    Services.obs.removeObserver(this, AUTOCOMPLETE_ENTER_TEXT_TOPIC);
   },
 
   observe(subject, topic, data) {
@@ -300,9 +300,9 @@ let BrowserUsageTelemetry = {
   },
 
   uninit() {
-    Services.obs.removeObserver(this, DOMWINDOW_OPENED_TOPIC, false);
-    Services.obs.removeObserver(this, TELEMETRY_SUBSESSIONSPLIT_TOPIC, false);
-    Services.obs.removeObserver(this, WINDOWS_RESTORED_TOPIC, false);
+    Services.obs.removeObserver(this, DOMWINDOW_OPENED_TOPIC);
+    Services.obs.removeObserver(this, TELEMETRY_SUBSESSIONSPLIT_TOPIC);
+    Services.obs.removeObserver(this, WINDOWS_RESTORED_TOPIC);
     urlbarListener.uninit();
   },
 
@@ -372,7 +372,7 @@ let BrowserUsageTelemetry = {
         // calling |recordSearch| twice from two different
         // code paths because they want to record the search
         // in SEARCH_COUNTS.
-        if (['urlbar', 'searchbar'].includes(source)) {
+        if (["urlbar", "searchbar"].includes(source)) {
           Services.telemetry.getKeyedHistogramById("SEARCH_COUNTS").add(countId);
           return;
         }
@@ -539,7 +539,7 @@ let BrowserUsageTelemetry = {
     }
 
     let onLoad = () => {
-      win.removeEventListener("load", onLoad, false);
+      win.removeEventListener("load", onLoad);
 
       // Ignore non browser windows.
       if (win.document.documentElement.getAttribute("windowtype") != "navigator:browser") {
@@ -556,6 +556,6 @@ let BrowserUsageTelemetry = {
       // Account for that.
       this._onTabOpen(counts.tabCount);
     };
-    win.addEventListener("load", onLoad, false);
+    win.addEventListener("load", onLoad);
   },
 };

@@ -21,6 +21,8 @@ Cu.import("resource://gre/modules/AddonManager.jsm");
 Cu.import("resource://gre/modules/addons/AddonRepository.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils", "resource:///modules/E10SUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Extension",
+                                  "resource://gre/modules/Extension.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ExtensionParent",
                                   "resource://gre/modules/ExtensionParent.jsm");
 
@@ -37,6 +39,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
 
 XPCOMUtils.defineLazyModuleGetter(this, "Experiments",
   "resource:///modules/experiments/Experiments.jsm");
+
+XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
+                                      "extensions.webextPermissionPrompts", false);
 
 const PREF_DISCOVERURL = "extensions.webservice.discoverURL";
 const PREF_DISCOVER_ENABLED = "extensions.getAddons.showPane";
@@ -87,7 +92,7 @@ XPCOMUtils.defineLazyGetter(gStrings, "appVersion", function() {
 });
 
 document.addEventListener("load", initialize, true);
-window.addEventListener("unload", shutdown, false);
+window.addEventListener("unload", shutdown);
 
 class MessageDispatcher {
   constructor(target) {
@@ -547,7 +552,7 @@ var gEventManager = {
       // Hide the separator if there are no visible menu items before it
       menuSep.hidden = (countMenuItemsBeforeSep == 0);
 
-    }, false);
+    });
 
     let addonTooltip = document.getElementById("addonitem-tooltip");
     addonTooltip.addEventListener("popupshowing", function() {
@@ -570,7 +575,7 @@ var gEventManager = {
       }
 
       addonTooltip.label = tiptext;
-    }, false);
+    });
   },
 
   shutdown() {
@@ -694,6 +699,40 @@ var gEventManager = {
   }
 };
 
+function attachUpdateHandler(install) {
+  if (!WEBEXT_PERMISSION_PROMPTS) {
+    return;
+  }
+
+  install.promptHandler = (info) => {
+    let oldPerms = info.existingAddon.userPermissions || {hosts: [], permissions: []};
+    let newPerms = info.addon.userPermissions;
+
+    let difference = Extension.comparePermissions(oldPerms, newPerms);
+
+    // If there are no new permissions, just proceed
+    if (difference.hosts.length == 0 && difference.permissions.length == 0) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      let subject = {
+        wrappedJSObject: {
+          target: getBrowserElement(),
+          info: {
+            type: "update",
+            addon: info.addon,
+            icon: info.addon.icon,
+            permissions: difference,
+            resolve,
+            reject,
+          },
+        },
+      };
+      Services.obs.notifyObservers(subject, "webextension-permission-prompt", null);
+    });
+  };
+}
 
 var gViewController = {
   viewPort: null,
@@ -725,8 +764,7 @@ var gViewController = {
 
     window.addEventListener("popstate", function(e) {
                               gViewController.updateState(e.state);
-                            },
-                            false);
+                            });
   },
 
   shutdown() {
@@ -1082,6 +1120,10 @@ var gViewController = {
             pendingChecks--;
             updateStatus();
           },
+          onInstallCancelled() {
+            pendingChecks--;
+            updateStatus();
+          },
           onInstallFailed() {
             pendingChecks--;
             updateStatus();
@@ -1099,6 +1141,7 @@ var gViewController = {
           onUpdateAvailable(aAddon, aInstall) {
             gEventManager.delegateAddonEvent("onUpdateAvailable",
                                              [aAddon, aInstall]);
+            attachUpdateHandler(aInstall);
             if (AddonManager.shouldAutoUpdate(aAddon)) {
               aInstall.addListener(updateInstallListener);
               aInstall.install();
@@ -1144,6 +1187,7 @@ var gViewController = {
           onUpdateAvailable(aAddon, aInstall) {
             gEventManager.delegateAddonEvent("onUpdateAvailable",
                                              [aAddon, aInstall]);
+            attachUpdateHandler(aInstall);
             if (AddonManager.shouldAutoUpdate(aAddon))
               aInstall.install();
           },
@@ -1547,7 +1591,7 @@ function formatDate(aDate) {
   const locale = Cc["@mozilla.org/chrome/chrome-registry;1"]
                  .getService(Ci.nsIXULChromeRegistry)
                  .getSelectedLocale("global", true);
-  const dtOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+  const dtOptions = { year: "numeric", month: "long", day: "numeric" };
   return aDate.toLocaleDateString(locale, dtOptions);
 }
 
@@ -1827,7 +1871,7 @@ var gCategories = {
     this.node.addEventListener("select", () => {
       this.maybeHideSearch();
       gViewController.loadView(this.node.selectedItem.value);
-    }, false);
+    });
 
     this.node.addEventListener("click", (aEvent) => {
       var selectedItem = this.node.selectedItem;
@@ -1841,7 +1885,7 @@ var gCategories = {
 
         gViewController.loadView(viewId);
       }
-    }, false);
+    });
   },
 
   shutdown() {
@@ -2038,7 +2082,7 @@ var gHeader = {
         return;
 
       gViewController.loadView("addons://search/" + encodeURIComponent(query));
-    }, false);
+    });
 
     function updateNavButtonVisibility() {
       var shouldShow = gHeader.shouldShowNavButtons;
@@ -2049,7 +2093,7 @@ var gHeader = {
     window.addEventListener("focus", function(aEvent) {
       if (aEvent.target == window)
         updateNavButtonVisibility();
-    }, false);
+    });
 
     updateNavButtonVisibility();
   },
@@ -2084,7 +2128,7 @@ var gHeader = {
     // If the back-button or any of its parents are hidden then make the buttons
     // visible
     while (node != outerDoc) {
-      var style = outerWin.getComputedStyle(node, "");
+      var style = outerWin.getComputedStyle(node);
       if (style.display == "none")
         return true;
       if (style.visibility != "visible")
@@ -2142,7 +2186,7 @@ var gDiscoverView = {
 
     let setURL = (aURL) => {
       try {
-        this.homepageURL = Services.io.newURI(aURL, null, null);
+        this.homepageURL = Services.io.newURI(aURL);
       } catch (e) {
         this.showError();
         notifyInitialized();
@@ -2401,9 +2445,9 @@ var gSearchView = {
         if (item)
           item.showInDetailView();
       }
-    }, false);
+    });
 
-    this._filter.addEventListener("command", () => this.updateView(), false);
+    this._filter.addEventListener("command", () => this.updateView());
   },
 
   shutdown() {
@@ -2716,7 +2760,7 @@ var gListView = {
         if (item)
           item.showInDetailView();
       }
-    }, false);
+    });
 
     document.getElementById("signing-learn-more").setAttribute("href",
       Services.urlFormatter.formatURLPref("app.support.baseURL") + "unsigned-addons");
@@ -3121,7 +3165,7 @@ var gDetailView = {
     var gridRows = document.querySelectorAll("#detail-grid rows row");
     let first = true;
     for (let gridRow of gridRows) {
-      if (first && window.getComputedStyle(gridRow, null).getPropertyValue("display") != "none") {
+      if (first && window.getComputedStyle(gridRow).getPropertyValue("display") != "none") {
         gridRow.setAttribute("first-row", true);
         first = false;
       } else {
@@ -3357,7 +3401,7 @@ var gDetailView = {
 
       menulist.disabled = !hasActivatePermission;
       menulist.hidden = false;
-      menulist.classList.add('no-auto-hide');
+      menulist.classList.add("no-auto-hide");
     } else {
       menulist.hidden = true;
     }
@@ -3394,10 +3438,9 @@ var gDetailView = {
     // listeners, and promises resolve asynchronously.
     let whenViewLoaded = callback => {
       if (gViewController.displayedView.hasAttribute("loading")) {
-        gDetailView.node.addEventListener("ViewChanged", function viewChangedEventListener() {
-          gDetailView.node.removeEventListener("ViewChanged", viewChangedEventListener);
+        gDetailView.node.addEventListener("ViewChanged", function() {
           callback();
-        });
+        }, {once: true});
       } else {
         callback();
       }
@@ -3421,7 +3464,7 @@ var gDetailView = {
     // removing any child elements. Removing the text nodes ensures any XBL
     // bindings apply properly.
     function stripTextNodes(aNode) {
-      var text = '';
+      var text = "";
       for (var i = 0; i < aNode.childNodes.length; i++) {
         if (aNode.childNodes[i].nodeType != document.ELEMENT_NODE) {
           text += aNode.childNodes[i].textContent;
@@ -3441,10 +3484,9 @@ var gDetailView = {
           this.createOptionsBrowser(rows).then(browser => {
             // Make sure the browser is unloaded as soon as we change views,
             // rather than waiting for the next detail view to load.
-            document.addEventListener("ViewChanged", function viewChangedEventListener() {
-              document.removeEventListener("ViewChanged", viewChangedEventListener);
+            document.addEventListener("ViewChanged", function() {
               browser.remove();
-            });
+            }, {once: true});
 
             finish(browser);
           });
@@ -3479,7 +3521,7 @@ var gDetailView = {
             }
 
             rows.appendChild(setting);
-            var visible = window.getComputedStyle(setting, null).getPropertyValue("display") != "none";
+            var visible = window.getComputedStyle(setting).getPropertyValue("display") != "none";
             if (!firstSetting && visible) {
               setting.setAttribute("first-row", true);
               firstSetting = setting;
@@ -3512,7 +3554,7 @@ var gDetailView = {
     let firstRow = gDetailView.node.querySelector('setting[first-row="true"]');
     if (firstRow) {
       let top = firstRow.boxObject.y;
-      top -= parseInt(window.getComputedStyle(firstRow, null).getPropertyValue("margin-top"));
+      top -= parseInt(window.getComputedStyle(firstRow).getPropertyValue("margin-top"));
 
       let detailViewBoxObject = gDetailView.node.boxObject;
       top -= detailViewBoxObject.y;
@@ -3533,6 +3575,7 @@ var gDetailView = {
     let readyPromise;
     if (remote) {
       browser.setAttribute("remote", "true");
+      browser.setAttribute("remoteType", E10SUtils.EXTENSION_REMOTE_TYPE);
       readyPromise = promiseEvent("XULFrameLoaderCreated", browser);
     } else {
       readyPromise = promiseEvent("load", browser, true);
@@ -3659,7 +3702,7 @@ var gUpdatesView = {
     this._updateSelected = document.getElementById("update-selected-btn");
     this._updateSelected.addEventListener("command", function() {
       gUpdatesView.installSelected();
-    }, false);
+    });
 
     this.updateAvailableCount(true);
 
@@ -3747,7 +3790,7 @@ var gUpdatesView = {
         item.setAttribute("upgrade", true);
         item.addEventListener("IncludeUpdateChanged", () => {
           this.maybeDisableUpdateSelected();
-        }, false);
+        });
         elements.push(item);
       }
 

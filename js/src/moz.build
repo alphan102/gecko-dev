@@ -159,6 +159,7 @@ EXPORTS.js += [
 
 UNIFIED_SOURCES += [
     'builtin/AtomicsObject.cpp',
+    'builtin/DataViewObject.cpp',
     'builtin/Eval.cpp',
     'builtin/Intl.cpp',
     'builtin/MapObject.cpp',
@@ -184,6 +185,7 @@ UNIFIED_SOURCES += [
     'frontend/ParseNode.cpp',
     'frontend/TokenStream.cpp',
     'gc/Allocator.cpp',
+    'gc/AtomMarking.cpp',
     'gc/Barrier.cpp',
     'gc/GCTrace.cpp',
     'gc/Iteration.cpp',
@@ -196,6 +198,7 @@ UNIFIED_SOURCES += [
     'gc/Tracer.cpp',
     'gc/Verifier.cpp',
     'gc/Zone.cpp',
+    'gc/ZoneGroup.cpp',
     'irregexp/NativeRegExpMacroAssembler.cpp',
     'irregexp/RegExpAST.cpp',
     'irregexp/RegExpCharacters.cpp',
@@ -245,6 +248,7 @@ UNIFIED_SOURCES += [
     'jit/JitFrames.cpp',
     'jit/JitOptions.cpp',
     'jit/JitSpewer.cpp',
+    'jit/JSONPrinter.cpp',
     'jit/JSONSpewer.cpp',
     'jit/LICM.cpp',
     'jit/Linker.cpp',
@@ -258,6 +262,7 @@ UNIFIED_SOURCES += [
     'jit/MoveResolver.cpp',
     'jit/OptimizationTracking.cpp',
     'jit/PerfSpewer.cpp',
+    'jit/ProcessExecutableMemory.cpp',
     'jit/RangeAnalysis.cpp',
     'jit/Recover.cpp',
     'jit/RegisterAllocator.cpp',
@@ -308,6 +313,7 @@ UNIFIED_SOURCES += [
     'proxy/SecurityWrapper.cpp',
     'proxy/Wrapper.cpp',
     'threading/Mutex.cpp',
+    'threading/ProtectedData.cpp',
     'vm/ArgumentsObject.cpp',
     'vm/ArrayBufferObject.cpp',
     'vm/AsyncFunction.cpp',
@@ -322,6 +328,7 @@ UNIFIED_SOURCES += [
     'vm/EnvironmentObject.cpp',
     'vm/ErrorObject.cpp',
     'vm/ForOfIterator.cpp',
+    'vm/GeckoProfiler.cpp',
     'vm/GeneratorObject.cpp',
     'vm/GlobalObject.cpp',
     'vm/HelperThreads.cpp',
@@ -345,7 +352,6 @@ UNIFIED_SOURCES += [
     'vm/Shape.cpp',
     'vm/SharedArrayObject.cpp',
     'vm/SharedImmutableStringsCache.cpp',
-    'vm/SPSProfiler.cpp',
     'vm/Stack.cpp',
     'vm/Stopwatch.cpp',
     'vm/String.cpp',
@@ -373,6 +379,7 @@ UNIFIED_SOURCES += [
     'wasm/WasmCode.cpp',
     'wasm/WasmCompartment.cpp',
     'wasm/WasmCompile.cpp',
+    'wasm/WasmDebugFrame.cpp',
     'wasm/WasmFrameIterator.cpp',
     'wasm/WasmGenerator.cpp',
     'wasm/WasmInstance.cpp',
@@ -584,8 +591,8 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
 
 if CONFIG['OS_ARCH'] == 'WINNT':
     SOURCES += [
-        'jit/ExecutableAllocatorWin.cpp',
         'threading/windows/ConditionVariable.cpp',
+        'threading/windows/CpuCount.cpp',
         'threading/windows/MutexImpl.cpp',
         'threading/windows/Thread.cpp',
     ]
@@ -593,8 +600,8 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     DEFINES['_CRT_RAND_S'] = True
 else:
     SOURCES += [
-        'jit/ExecutableAllocatorPosix.cpp',
         'threading/posix/ConditionVariable.cpp',
+        'threading/posix/CpuCount.cpp',
         'threading/posix/MutexImpl.cpp',
         'threading/posix/Thread.cpp',
     ]
@@ -644,7 +651,6 @@ jsautokw.inputs += [
 if CONFIG['JS_SHARED_LIBRARY']:
     GeckoSharedLibrary('js', linkage=None)
     SHARED_LIBRARY_NAME = CONFIG['JS_LIBRARY_NAME']
-    SDK_LIBRARY = True
 else:
     Library('js')
 

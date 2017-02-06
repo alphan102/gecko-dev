@@ -25,9 +25,8 @@ function test() {
         ok(false, "Alert window opened");
         let win = aSubject.QueryInterface(Ci.nsIDOMEventTarget);
         win.addEventListener("load", function() {
-          win.removeEventListener("load", arguments.callee, false);
           win.close();
-        }, false);
+        }, {once: true});
         executeSoon(finish);
       }
     }

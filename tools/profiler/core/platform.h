@@ -29,11 +29,6 @@
 #ifndef TOOLS_PLATFORM_H_
 #define TOOLS_PLATFORM_H_
 
-#ifdef SPS_STANDALONE
-#define MOZ_COUNT_CTOR(name)
-#define MOZ_COUNT_DTOR(name)
-#endif
-
 #ifdef ANDROID
 #include <android/log.h>
 #else
@@ -46,14 +41,13 @@
 
 #include <stdint.h>
 #include <math.h>
-#ifndef SPS_STANDALONE
 #include "MainThreadUtils.h"
 #include "mozilla/Mutex.h"
 #include "ThreadResponsiveness.h"
-#endif
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
+#include "mozilla/Vector.h"
 #include "PlatformMacros.h"
 #include "v8-support.h"
 #include <vector>
@@ -81,38 +75,35 @@ static inline pid_t gettid()
 #include <windows.h>
 #endif
 
-#define ASSERT(a) MOZ_ASSERT(a)
-
-bool moz_profiler_verbose();
+bool profiler_verbose();
 
 #ifdef ANDROID
 # if defined(__arm__) || defined(__thumb__)
-#  define ENABLE_SPS_LEAF_DATA
-#  define ENABLE_ARM_LR_SAVING
+#  define ENABLE_LEAF_DATA
 # endif
 # define LOG(text) \
-    do { if (moz_profiler_verbose()) \
+    do { if (profiler_verbose()) \
            __android_log_write(ANDROID_LOG_ERROR, "Profiler", text); \
     } while (0)
 # define LOGF(format, ...) \
-    do { if (moz_profiler_verbose()) \
+    do { if (profiler_verbose()) \
            __android_log_print(ANDROID_LOG_ERROR, "Profiler", format, \
                                __VA_ARGS__); \
     } while (0)
 
 #else
 # define LOG(text) \
-    do { if (moz_profiler_verbose()) fprintf(stderr, "Profiler: %s\n", text); \
+    do { if (profiler_verbose()) fprintf(stderr, "Profiler: %s\n", text); \
     } while (0)
 # define LOGF(format, ...) \
-    do { if (moz_profiler_verbose()) fprintf(stderr, "Profiler: " format \
-                                             "\n", __VA_ARGS__);        \
+    do { if (profiler_verbose()) fprintf(stderr, "Profiler: " format "\n", \
+                                         __VA_ARGS__); \
     } while (0)
 
 #endif
 
 #if defined(XP_MACOSX) || defined(XP_WIN) || defined(XP_LINUX)
-#define ENABLE_SPS_LEAF_DATA
+#define ENABLE_LEAF_DATA
 #endif
 
 typedef int32_t Atomic32;
@@ -122,43 +113,6 @@ extern mozilla::TimeStamp sStartTime;
 typedef uint8_t* Address;
 
 // ----------------------------------------------------------------------------
-// Mutex
-//
-// Mutexes are used for serializing access to non-reentrant sections of code.
-// The implementations of mutex should allow for nested/recursive locking.
-
-class Mutex {
- public:
-  virtual ~Mutex() {}
-
-  // Locks the given mutex. If the mutex is currently unlocked, it becomes
-  // locked and owned by the calling thread, and immediately. If the mutex
-  // is already locked by another thread, suspends the calling thread until
-  // the mutex is unlocked.
-  virtual int Lock() = 0;
-
-  // Unlocks the given mutex. The mutex is assumed to be locked and owned by
-  // the calling thread on entrance.
-  virtual int Unlock() = 0;
-};
-
-class MutexAutoLock {
- public:
-  explicit MutexAutoLock(::Mutex& aMutex)
-    : mMutex(&aMutex)
-  {
-    mMutex->Lock();
-  }
-
-  ~MutexAutoLock() {
-    mMutex->Unlock();
-  }
-
- private:
-  Mutex* mMutex;
-};
-
-// ----------------------------------------------------------------------------
 // OS
 //
 // This class has static methods for the different platform specific
@@ -166,8 +120,7 @@ class MutexAutoLock {
 // supported platforms.
 
 class OS {
- public:
-
+public:
   // Sleep for a number of milliseconds.
   static void Sleep(const int milliseconds);
 
@@ -176,67 +129,24 @@ class OS {
 
   // Called on startup to initialize platform specific things
   static void Startup();
-
-  static mozilla::UniquePtr< ::Mutex> CreateMutex(const char* aDesc);
-
- private:
-  static const int msPerSecond = 1000;
-
 };
-
-
-
 
 // ----------------------------------------------------------------------------
 // Thread
 //
-// Thread objects are used for creating and running threads. When the start()
-// method is called the new thread starts running the run() method in the new
-// thread. The Thread object should not be deallocated before the thread has
-// terminated.
+// This class has static methods for the different platform specific
+// functions. Add methods here to cope with differences between the
+// supported platforms.
 
 class Thread {
- public:
-  // Create new thread.
-  explicit Thread(const char* name);
-  virtual ~Thread();
-
-  // Start new thread by calling the Run() method in the new thread.
-  void Start();
-
-  void Join();
-
-  inline const char* name() const {
-    return name_;
-  }
-
-  // Abstract method for run handler.
-  virtual void Run() = 0;
-
-  // The thread name length is limited to 16 based on Linux's implementation of
-  // prctl().
-  static const int kMaxThreadNameLength = 16;
-
+public:
 #ifdef XP_WIN
-  HANDLE thread_;
   typedef DWORD tid_t;
-  tid_t thread_id_;
 #else
   typedef ::pid_t tid_t;
 #endif
-#if defined(XP_MACOSX)
-  pthread_t thread_;
-#endif
 
   static tid_t GetCurrentId();
-
- private:
-  void set_name(const char *name);
-
-  char name_[kMaxThreadNameLength];
-  int stack_size_;
-
-  DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
 // ----------------------------------------------------------------------------
@@ -274,8 +184,6 @@ bool set_profiler_entries(const char*);
 bool set_profiler_scan(const char*);
 bool is_native_unwinding_avail();
 
-void set_tls_stack_top(void* stackTop);
-
 // ----------------------------------------------------------------------------
 // Sampler
 //
@@ -283,8 +191,7 @@ void set_tls_stack_top(void* stackTop);
 // (if used for profiling) the program counter and stack pointer for
 // the thread that created it.
 
-struct PseudoStack;
-class ThreadProfile;
+class ThreadInfo;
 
 // TickSample captures the information collected for each sample.
 class TickSample {
@@ -293,12 +200,10 @@ class TickSample {
       : pc(NULL)
       , sp(NULL)
       , fp(NULL)
-#ifdef ENABLE_ARM_LR_SAVING
       , lr(NULL)
-#endif
       , context(NULL)
       , isSamplingCurrentThread(false)
-      , threadProfile(nullptr)
+      , threadInfo(nullptr)
       , rssMemory(0)
       , ussMemory(0)
   {}
@@ -308,50 +213,62 @@ class TickSample {
   Address pc;  // Instruction pointer.
   Address sp;  // Stack pointer.
   Address fp;  // Frame pointer.
-#ifdef ENABLE_ARM_LR_SAVING
   Address lr;  // ARM link register
-#endif
   void*   context;   // The context from the signal handler, if available. On
                      // Win32 this may contain the windows thread context.
   bool    isSamplingCurrentThread;
-  ThreadProfile* threadProfile;
+  ThreadInfo* threadInfo;
   mozilla::TimeStamp timestamp;
   int64_t rssMemory;
   int64_t ussMemory;
 };
 
-class ThreadInfo;
+struct JSContext;
+class JSObject;
 class PlatformData;
-class GeckoSampler;
+class ProfileBuffer;
+struct PseudoStack;
+class SpliceableJSONWriter;
 class SyncProfile;
+
+namespace mozilla {
+class ProfileGatherer;
+
+namespace dom {
+class Promise;
+}
+}
+
+typedef mozilla::Vector<std::string> ThreadNameFilterList;
+typedef mozilla::Vector<std::string> FeatureList;
+
+extern int sFrameNumber;
+extern int sLastFrameNumber;
+
 class Sampler {
- public:
+public:
   // Initialize sampler.
-  explicit Sampler(double interval, bool profiling, int entrySize);
-  virtual ~Sampler();
+  Sampler(double aInterval, int aEntrySize,
+          const char** aFeatures, uint32_t aFeatureCount,
+          const char** aThreadNameFilters, uint32_t aFilterCount);
+  ~Sampler();
 
   double interval() const { return interval_; }
 
   // This method is called for each sampling period with the current
-  // program counter.
-  virtual void Tick(TickSample* sample) = 0;
+  // program counter. This function must be re-entrant.
+  void Tick(TickSample* sample);
 
   // Immediately captures the calling thread's call stack and returns it.
-  virtual SyncProfile* GetBacktrace() = 0;
+  SyncProfile* GetBacktrace();
 
-  // Request a save from a signal handler
-  virtual void RequestSave() = 0;
-  // Process any outstanding request outside a signal handler.
-  virtual void HandleSaveRequest() = 0;
-  // Delete markers which are no longer part of the profile due to buffer wraparound.
-  virtual void DeleteExpiredMarkers() = 0;
+  // Delete markers which are no longer part of the profile due to buffer
+  // wraparound.
+  void DeleteExpiredMarkers();
 
   // Start and stop sampler.
   void Start();
   void Stop();
-
-  // Is the sampler used for profiling?
-  bool IsProfiling() const { return profiling_; }
 
   // Whether the sampler is running (that is, consumes resources).
   bool IsActive() const { return active_; }
@@ -359,8 +276,6 @@ class Sampler {
   // Low overhead way to stop the sampler from ticking
   bool IsPaused() const { return paused_; }
   void SetPaused(bool value) { NoBarrier_Store(&paused_, value); }
-
-  virtual bool ProfileThreads() const = 0;
 
   int EntrySize() { return entrySize_; }
 
@@ -381,9 +296,6 @@ class Sampler {
   // xxxehsan sucky hack :(
   static uintptr_t GetThreadHandle(PlatformData*);
 #endif
-#ifdef XP_MACOSX
-  static pthread_t GetProfiledThread(PlatformData*);
-#endif
 
   static const std::vector<ThreadInfo*>& GetRegisteredThreads() {
     return *sRegisteredThreads;
@@ -398,10 +310,7 @@ class Sampler {
   // Should only be called on shutdown
   static void Shutdown();
 
-  static GeckoSampler* GetActiveSampler() { return sActiveSampler; }
-  static void SetActiveSampler(GeckoSampler* sampler) { sActiveSampler = sampler; }
-
-  static mozilla::UniquePtr<Mutex> sRegisteredThreadsMutex;
+  static mozilla::UniquePtr<mozilla::Mutex> sRegisteredThreadsMutex;
 
   static bool CanNotifyObservers() {
 #ifdef MOZ_WIDGET_GONK
@@ -416,15 +325,49 @@ class Sampler {
 #endif
   }
 
- protected:
-  static std::vector<ThreadInfo*>* sRegisteredThreads;
-  static GeckoSampler* sActiveSampler;
+  void RegisterThread(ThreadInfo* aInfo);
 
- private:
+  bool ProfileJS() const { return mProfileJS; }
+  bool ProfileJava() const { return mProfileJava; }
+  bool ProfileGPU() const { return mProfileGPU; }
+  bool ProfileThreads() const { return mProfileThreads; }
+  bool InPrivacyMode() const { return mPrivacyMode; }
+  bool AddMainThreadIO() const { return mAddMainThreadIO; }
+  bool ProfileMemory() const { return mProfileMemory; }
+  bool TaskTracer() const { return mTaskTracer; }
+  bool LayersDump() const { return mLayersDump; }
+  bool DisplayListDump() const { return mDisplayListDump; }
+  bool ProfileRestyle() const { return mProfileRestyle; }
+  const ThreadNameFilterList& ThreadNameFilters() { return mThreadNameFilters; }
+  const FeatureList& Features() { return mFeatures; }
+
+  void ToStreamAsJSON(std::ostream& stream, double aSinceTime = 0);
+  JSObject *ToJSObject(JSContext *aCx, double aSinceTime = 0);
+  void GetGatherer(nsISupports** aRetVal);
+  mozilla::UniquePtr<char[]> ToJSON(double aSinceTime = 0);
+  void ToJSObjectAsync(double aSinceTime = 0,
+                       mozilla::dom::Promise* aPromise = 0);
+  void ToFileAsync(const nsACString& aFileName, double aSinceTime = 0);
+  void StreamMetaJSCustomObject(SpliceableJSONWriter& aWriter);
+  void StreamTaskTracer(SpliceableJSONWriter& aWriter);
+  void FlushOnJSShutdown(JSContext* aContext);
+
+  void GetBufferInfo(uint32_t *aCurrentPosition, uint32_t *aTotalSize, uint32_t *aGeneration);
+
+private:
+  // Not implemented on platforms which do not support backtracing
+  void doNativeBacktrace(ThreadInfo& aInfo, TickSample* aSample);
+
+  void StreamJSON(SpliceableJSONWriter& aWriter, double aSinceTime);
+
+  // Called within a signal. This function must be reentrant
+  void InplaceTick(TickSample* sample);
+
   void SetActive(bool value) { NoBarrier_Store(&active_, value); }
 
+  static std::vector<ThreadInfo*>* sRegisteredThreads;
+
   const double interval_;
-  const bool profiling_;
   Atomic32 paused_;
   Atomic32 active_;
   const int entrySize_;
@@ -437,6 +380,28 @@ class Sampler {
   bool signal_sender_launched_;
   pthread_t signal_sender_thread_;
 #endif
+
+  RefPtr<ProfileBuffer> mBuffer;
+  bool mAddLeafAddresses;
+  bool mUseStackWalk;
+  bool mProfileJS;
+  bool mProfileGPU;
+  bool mProfileThreads;
+  bool mProfileJava;
+  bool mLayersDump;
+  bool mDisplayListDump;
+  bool mProfileRestyle;
+
+  // Keep the thread filter to check against new thread that
+  // are started while profiling
+  ThreadNameFilterList mThreadNameFilters;
+  FeatureList mFeatures;
+  bool mPrivacyMode;
+  bool mAddMainThreadIO;
+  bool mProfileMemory;
+  bool mTaskTracer;
+
+  RefPtr<mozilla::ProfileGatherer> mGatherer;
 };
 
 #endif /* ndef TOOLS_PLATFORM_H_ */

@@ -46,8 +46,6 @@ using mozilla::dom::KeyframeEffectReadOnly;
 using namespace mozilla;
 using namespace mozilla::css;
 
-typedef mozilla::ComputedTiming::AnimationPhase AnimationPhase;
-
 namespace {
 struct TransitionEventParams {
   EventMessage mMessage;
@@ -558,8 +556,8 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
                "for transitions");
     nsStyleSet* styleSet = mPresContext->StyleSet()->AsGecko();
     afterChangeStyle =
-      styleSet->ResolveStyleWithoutAnimation(aElement, newStyleContext,
-                                             eRestyle_CSSTransitions);
+      styleSet->ResolveStyleByRemovingAnimation(aElement, newStyleContext,
+                                                eRestyle_CSSTransitions);
   } else {
     afterChangeStyle = newStyleContext;
   }

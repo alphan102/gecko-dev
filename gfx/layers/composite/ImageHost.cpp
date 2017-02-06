@@ -152,12 +152,6 @@ ImageHost::RemoveTextureHost(TextureHost* aTexture)
   }
 }
 
-void
-ImageHost::UseOverlaySource(OverlaySource aOverlay,
-                            const gfx::IntRect& aPictureRect)
-{
-}
-
 static TimeStamp
 GetBiasedTime(const TimeStamp& aInput, ImageHost::Bias aBias)
 {
@@ -350,7 +344,7 @@ ImageHost::Composite(LayerComposite* aLayer,
         ImageCompositeNotificationInfo info;
         info.mImageBridgeProcessId = mAsyncRef.mProcessId;
         info.mNotification = ImageCompositeNotification(
-          mAsyncRef.mAsyncId,
+          mAsyncRef.mHandle,
           img->mTimeStamp, GetCompositor()->GetCompositionTime(),
           img->mFrameID, img->mProducerID);
         static_cast<LayerManagerComposite*>(aLayer->GetLayerManager())->

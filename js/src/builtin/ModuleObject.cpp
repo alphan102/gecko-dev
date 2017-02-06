@@ -103,7 +103,7 @@ GlobalObject::initImportEntryProto(JSContext* cx, Handle<GlobalObject*> global)
         JS_PS_END
     };
 
-    RootedObject proto(cx, global->createBlankPrototype<PlainObject>(cx));
+    RootedObject proto(cx, GlobalObject::createBlankPrototype<PlainObject>(cx, global));
     if (!proto)
         return false;
 
@@ -115,7 +115,7 @@ GlobalObject::initImportEntryProto(JSContext* cx, Handle<GlobalObject*> global)
 }
 
 /* static */ ImportEntryObject*
-ImportEntryObject::create(ExclusiveContext* cx,
+ImportEntryObject::create(JSContext* cx,
                           HandleAtom moduleRequest,
                           HandleAtom importName,
                           HandleAtom localName)
@@ -169,7 +169,7 @@ GlobalObject::initExportEntryProto(JSContext* cx, Handle<GlobalObject*> global)
         JS_PS_END
     };
 
-    RootedObject proto(cx, global->createBlankPrototype<PlainObject>(cx));
+    RootedObject proto(cx, GlobalObject::createBlankPrototype<PlainObject>(cx, global));
     if (!proto)
         return false;
 
@@ -187,7 +187,7 @@ StringOrNullValue(JSString* maybeString)
 }
 
 /* static */ ExportEntryObject*
-ExportEntryObject::create(ExclusiveContext* cx,
+ExportEntryObject::create(JSContext* cx,
                           HandleAtom maybeExportName,
                           HandleAtom maybeModuleRequest,
                           HandleAtom maybeImportName,
@@ -576,7 +576,7 @@ ModuleObject::isInstance(HandleValue value)
 }
 
 /* static */ ModuleObject*
-ModuleObject::create(ExclusiveContext* cx)
+ModuleObject::create(JSContext* cx)
 {
     RootedObject proto(cx, cx->global()->getModulePrototype());
     RootedObject obj(cx, NewObjectWithGivenProto(cx, &class_, proto));
@@ -764,7 +764,7 @@ AssertModuleScopesMatch(ModuleObject* module)
 }
 
 void
-ModuleObject::fixEnvironmentsAfterCompartmentMerge(JSContext* cx)
+ModuleObject::fixEnvironmentsAfterCompartmentMerge()
 {
     AssertModuleScopesMatch(this);
     initialEnvironment().fixEnclosingEnvironmentAfterCompartmentMerge(script()->global());
@@ -853,7 +853,7 @@ ModuleObject::createEnvironment()
 }
 
 bool
-ModuleObject::noteFunctionDeclaration(ExclusiveContext* cx, HandleAtom name, HandleFunction fun)
+ModuleObject::noteFunctionDeclaration(JSContext* cx, HandleAtom name, HandleFunction fun)
 {
     FunctionDeclarationVector* funDecls = functionDeclarations();
     if (!funDecls->emplaceBack(name, fun)) {
@@ -996,7 +996,7 @@ GlobalObject::initModuleProto(JSContext* cx, Handle<GlobalObject*> global)
         JS_FS_END
     };
 
-    RootedObject proto(cx, global->createBlankPrototype<PlainObject>(cx));
+    RootedObject proto(cx, GlobalObject::createBlankPrototype<PlainObject>(cx, global));
     if (!proto)
         return false;
 
@@ -1014,7 +1014,7 @@ GlobalObject::initModuleProto(JSContext* cx, Handle<GlobalObject*> global)
 ///////////////////////////////////////////////////////////////////////////
 // ModuleBuilder
 
-ModuleBuilder::ModuleBuilder(ExclusiveContext* cx, HandleModuleObject module)
+ModuleBuilder::ModuleBuilder(JSContext* cx, HandleModuleObject module)
   : cx_(cx),
     module_(cx, module),
     requestedModules_(cx, AtomVector(cx)),
@@ -1140,6 +1140,13 @@ ModuleBuilder::processExport(frontend::ParseNode* pn)
     bool isDefault = pn->getKind() == PNK_EXPORT_DEFAULT;
     ParseNode* kid = isDefault ? pn->pn_left : pn->pn_kid;
 
+    if (isDefault && pn->pn_right) {
+        // This is an export default containing an expression.
+        RootedAtom localName(cx_, cx_->names().starDefaultStar);
+        RootedAtom exportName(cx_, cx_->names().default_);
+        return appendExportEntry(exportName, localName);
+    }
+
     switch (kid->getKind()) {
       case PNK_EXPORT_SPEC_LIST:
         MOZ_ASSERT(!isDefault);
@@ -1153,53 +1160,46 @@ ModuleBuilder::processExport(frontend::ParseNode* pn)
         break;
 
       case PNK_CLASS: {
-          const ClassNode& cls = kid->as<ClassNode>();
-          MOZ_ASSERT(cls.names());
-          RootedAtom localName(cx_, cls.names()->innerBinding()->pn_atom);
-          RootedAtom exportName(cx_, isDefault ? cx_->names().default_ : localName.get());
-          if (!appendExportEntry(exportName, localName))
-              return false;
-          break;
+        const ClassNode& cls = kid->as<ClassNode>();
+        MOZ_ASSERT(cls.names());
+        RootedAtom localName(cx_, cls.names()->innerBinding()->pn_atom);
+        RootedAtom exportName(cx_, isDefault ? cx_->names().default_ : localName.get());
+        if (!appendExportEntry(exportName, localName))
+            return false;
+        break;
       }
 
       case PNK_VAR:
       case PNK_CONST:
       case PNK_LET: {
-          MOZ_ASSERT(kid->isArity(PN_LIST));
-          for (ParseNode* var = kid->pn_head; var; var = var->pn_next) {
-              if (var->isKind(PNK_ASSIGN))
-                  var = var->pn_left;
-              MOZ_ASSERT(var->isKind(PNK_NAME));
-              RootedAtom localName(cx_, var->pn_atom);
-              RootedAtom exportName(cx_, isDefault ? cx_->names().default_ : localName.get());
-              if (!appendExportEntry(exportName, localName))
-                  return false;
-          }
-          break;
+        MOZ_ASSERT(kid->isArity(PN_LIST));
+        for (ParseNode* var = kid->pn_head; var; var = var->pn_next) {
+            if (var->isKind(PNK_ASSIGN))
+                var = var->pn_left;
+            MOZ_ASSERT(var->isKind(PNK_NAME));
+            RootedAtom localName(cx_, var->pn_atom);
+            RootedAtom exportName(cx_, isDefault ? cx_->names().default_ : localName.get());
+            if (!appendExportEntry(exportName, localName))
+                return false;
+        }
+        break;
       }
 
       case PNK_FUNCTION: {
-          RootedFunction func(cx_, kid->pn_funbox->function());
-          if (!func->isArrow()) {
-              RootedAtom localName(cx_, func->explicitName());
-              RootedAtom exportName(cx_, isDefault ? cx_->names().default_ : localName.get());
-              MOZ_ASSERT_IF(isDefault, localName);
-              if (!appendExportEntry(exportName, localName))
-                  return false;
-              break;
-          }
-      }
-
-      MOZ_FALLTHROUGH; // Arrow functions are handled below.
-
-      default:
-        MOZ_ASSERT(isDefault);
-        RootedAtom localName(cx_, cx_->names().starDefaultStar);
-        RootedAtom exportName(cx_, cx_->names().default_);
+        RootedFunction func(cx_, kid->pn_funbox->function());
+        MOZ_ASSERT(!func->isArrow());
+        RootedAtom localName(cx_, func->explicitName());
+        RootedAtom exportName(cx_, isDefault ? cx_->names().default_ : localName.get());
+        MOZ_ASSERT_IF(isDefault, localName);
         if (!appendExportEntry(exportName, localName))
             return false;
         break;
+      }
+
+      default:
+        MOZ_CRASH("Unexpected parse node");
     }
+
     return true;
 }
 

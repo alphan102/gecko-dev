@@ -7,6 +7,24 @@ const CONTENT_SEARCH_MSG = "ContentSearch";
 const TEST_CONTENT_SCRIPT_BASENAME = "contentSearch.js";
 
 var gMsgMan;
+/* eslint no-undef:"error" */
+/* import-globals-from ../../components/search/test/head.js */
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/browser/components/search/test/head.js",
+  this);
+
+let originalEngine = Services.search.currentEngine;
+
+add_task(function* setup() {
+  yield promiseNewEngine("testEngine.xml", {
+    setAsCurrent: true,
+    testPath: "chrome://mochitests/content/browser/browser/components/search/test/",
+  });
+
+  registerCleanupFunction(() => {
+    Services.search.currentEngine = originalEngine;
+  });
+});
 
 add_task(function* GetState() {
   yield addTab();
@@ -332,8 +350,7 @@ function addTab() {
   let deferred = Promise.defer();
   let tab = gBrowser.addTab();
   gBrowser.selectedTab = tab;
-  tab.linkedBrowser.addEventListener("load", function load() {
-    tab.linkedBrowser.removeEventListener("load", load, true);
+  tab.linkedBrowser.addEventListener("load", function() {
     let url = getRootDirectory(gTestPath) + TEST_CONTENT_SCRIPT_BASENAME;
     gMsgMan = tab.linkedBrowser.messageManager;
     gMsgMan.sendAsyncMessage(CONTENT_SEARCH_MSG, {
@@ -344,7 +361,7 @@ function addTab() {
       gMsgMan.loadFrameScript(url, false);
       deferred.resolve();
     });
-  }, true);
+  }, {capture: true, once: true});
   registerCleanupFunction(() => gBrowser.removeTab(tab));
   return deferred.promise;
 }

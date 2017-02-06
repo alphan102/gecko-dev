@@ -293,19 +293,9 @@ nsScriptSecurityManager::GetChannelResultPrincipal(nsIChannel* aChannel,
 
     if (loadInfo) {
         if (!aIgnoreSandboxing && loadInfo->GetLoadingSandboxed()) {
-            RefPtr<nsNullPrincipal> prin;
-            if (loadInfo->LoadingPrincipal()) {
-              prin =
-                nsNullPrincipal::CreateWithInheritedAttributes(loadInfo->LoadingPrincipal());
-            } else {
-              NeckoOriginAttributes nAttrs;
-              loadInfo->GetOriginAttributes(&nAttrs);
-              PrincipalOriginAttributes pAttrs;
-              pAttrs.InheritFromNecko(nAttrs);
-              prin = nsNullPrincipal::Create(pAttrs);
-            }
-            prin.forget(aPrincipal);
-            return NS_OK;
+          MOZ_ALWAYS_TRUE(NS_SUCCEEDED(loadInfo->GetSandboxedLoadingPrincipal(aPrincipal)));
+          MOZ_ASSERT(*aPrincipal);
+          return NS_OK;
         }
 
         bool forceInherit = loadInfo->GetForceInheritPrincipal();
@@ -356,7 +346,7 @@ nsScriptSecurityManager::GetChannelResultPrincipal(nsIChannel* aChannel,
 }
 
 nsresult
-nsScriptSecurityManager::MaybeSetAddonIdFromURI(PrincipalOriginAttributes& aAttrs, nsIURI* aURI)
+nsScriptSecurityManager::MaybeSetAddonIdFromURI(OriginAttributes& aAttrs, nsIURI* aURI)
 {
   nsAutoCString scheme;
   nsresult rv = aURI->GetScheme(scheme);
@@ -400,11 +390,11 @@ nsScriptSecurityManager::GetChannelURIPrincipal(nsIChannel* aChannel,
     // loadInfo will be set from nsDocShell::DoURILoad.
     // For subresource loading, the origin attributes of the loadInfo is from
     // its loadingPrincipal.
-    PrincipalOriginAttributes attrs;
+    OriginAttributes attrs;
 
     // For addons loadInfo might be null.
     if (loadInfo) {
-      attrs.InheritFromNecko(loadInfo->GetOriginAttributes());
+      attrs.Inherit(loadInfo->GetOriginAttributes());
     }
     rv = MaybeSetAddonIdFromURI(attrs, uri);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -530,19 +520,6 @@ nsScriptSecurityManager::CheckLoadURIFromScript(JSContext *cx, nsIURI *aURI)
     if (NS_SUCCEEDED(rv)) {
         // OK to load
         return NS_OK;
-    }
-
-    // See if we're attempting to load a file: URI. If so, let a
-    // UniversalXPConnect capability trump the above check.
-    bool isFile = false;
-    bool isRes = false;
-    if (NS_FAILED(aURI->SchemeIs("file", &isFile)) ||
-        NS_FAILED(aURI->SchemeIs("resource", &isRes)))
-        return NS_ERROR_FAILURE;
-    if (isFile || isRes)
-    {
-        if (nsContentUtils::IsCallerChrome())
-            return NS_OK;
     }
 
     // Report error.
@@ -1070,7 +1047,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::GetNoAppCodebasePrincipal(nsIURI* aURI,
                                                    nsIPrincipal** aPrincipal)
 {
-  PrincipalOriginAttributes attrs(NO_APP_ID, false);
+  OriginAttributes attrs;
   nsCOMPtr<nsIPrincipal> prin = BasePrincipal::CreateCodebasePrincipal(aURI, attrs);
   prin.forget(aPrincipal);
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
@@ -1087,7 +1064,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::CreateCodebasePrincipal(nsIURI* aURI, JS::Handle<JS::Value> aOriginAttributes,
                                                  JSContext* aCx, nsIPrincipal** aPrincipal)
 {
-  PrincipalOriginAttributes attrs;
+  OriginAttributes attrs;
   if (!aOriginAttributes.isObject() || !attrs.Init(aCx, aOriginAttributes)) {
       return NS_ERROR_INVALID_ARG;
   }
@@ -1117,7 +1094,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::CreateNullPrincipal(JS::Handle<JS::Value> aOriginAttributes,
                                              JSContext* aCx, nsIPrincipal** aPrincipal)
 {
-  PrincipalOriginAttributes attrs;
+  OriginAttributes attrs;
   if (!aOriginAttributes.isObject() || !attrs.Init(aCx, aOriginAttributes)) {
       return NS_ERROR_INVALID_ARG;
   }
@@ -1135,7 +1112,7 @@ nsScriptSecurityManager::GetAppCodebasePrincipal(nsIURI* aURI,
   NS_ENSURE_TRUE(aAppId != nsIScriptSecurityManager::UNKNOWN_APP_ID,
                  NS_ERROR_INVALID_ARG);
 
-  PrincipalOriginAttributes attrs(aAppId, aInIsolatedMozBrowser);
+  OriginAttributes attrs(aAppId, aInIsolatedMozBrowser);
   nsCOMPtr<nsIPrincipal> prin = BasePrincipal::CreateCodebasePrincipal(aURI, attrs);
   prin.forget(aPrincipal);
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
@@ -1148,12 +1125,12 @@ nsScriptSecurityManager::
                                   nsIPrincipal** aPrincipal)
 {
   NS_ENSURE_STATE(aLoadContext);
-  DocShellOriginAttributes docShellAttrs;
+  OriginAttributes docShellAttrs;
   bool result = aLoadContext->GetOriginAttributes(docShellAttrs);;
   NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
 
-  PrincipalOriginAttributes attrs;
-  attrs.InheritFromDocShellToDoc(docShellAttrs, aURI);
+  OriginAttributes attrs;
+  attrs.Inherit(docShellAttrs);
 
   nsresult rv = MaybeSetAddonIdFromURI(attrs, aURI);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1167,8 +1144,8 @@ nsScriptSecurityManager::GetDocShellCodebasePrincipal(nsIURI* aURI,
                                                       nsIDocShell* aDocShell,
                                                       nsIPrincipal** aPrincipal)
 {
-  PrincipalOriginAttributes attrs;
-  attrs.InheritFromDocShellToDoc(nsDocShell::Cast(aDocShell)->GetOriginAttributes(), aURI);
+  OriginAttributes attrs;
+  attrs.Inherit(nsDocShell::Cast(aDocShell)->GetOriginAttributes());
 
   nsresult rv = MaybeSetAddonIdFromURI(attrs, aURI);
   NS_ENSURE_SUCCESS(rv, rv);

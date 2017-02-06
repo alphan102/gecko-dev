@@ -10,16 +10,16 @@ const PREF_INSTALL_REQUIREBUILTINCERTS = "extensions.install.requireBuiltInCerts
 const PROGRESS_NOTIFICATION = "addon-progress";
 
 const { REQUIRE_SIGNING } = Cu.import("resource://gre/modules/addons/AddonConstants.jsm", {});
-const { Task } = Cu.import("resource://gre/modules/Task.jsm");
+const { Task } = Cu.import("resource://gre/modules/Task.jsm", {});
 
 var rootDir = getRootDirectory(gTestPath);
-var rootPath = rootDir.split('/');
-var chromeName = rootPath[0] + '//' + rootPath[2];
+var rootPath = rootDir.split("/");
+var chromeName = rootPath[0] + "//" + rootPath[2];
 var croot = chromeName + "/content/browser/toolkit/mozapps/extensions/test/xpinstall/";
 var jar = getJar(croot);
 if (jar) {
   var tmpdir = extractJarToTmp(jar);
-  croot = 'file://' + tmpdir.path + '/';
+  croot = "file://" + tmpdir.path + "/";
 }
 const CHROMEROOT = croot;
 
@@ -61,10 +61,9 @@ function waitForProgressNotification(aPanelOpen = false, aExpectedCount = 1) {
       panelEventPromise = Promise.resolve();
     } else {
       panelEventPromise = new Promise(resolve => {
-        PopupNotifications.panel.addEventListener("popupshowing", function eventListener() {
-          PopupNotifications.panel.removeEventListener("popupshowing", eventListener);
+        PopupNotifications.panel.addEventListener("popupshowing", function() {
           resolve();
-        });
+        }, {once: true});
       });
     }
 
@@ -134,10 +133,9 @@ function waitForNotification(aId, aExpectedCount = 1) {
 function waitForNotificationClose() {
   return new Promise(resolve => {
     info("Waiting for notification to close");
-    PopupNotifications.panel.addEventListener("popuphidden", function listener() {
-      PopupNotifications.panel.removeEventListener("popuphidden", listener, false);
+    PopupNotifications.panel.addEventListener("popuphidden", function() {
       resolve();
-    }, false);
+    }, {once: true});
   });
 }
 
@@ -783,12 +781,12 @@ function test_reload() {
     function testFail() {
       ok(false, "Reloading should not have hidden the notification");
     }
-    PopupNotifications.panel.addEventListener("popuphiding", testFail, false);
+    PopupNotifications.panel.addEventListener("popuphiding", testFail);
     let requestedUrl = TESTROOT2 + "enabled.html";
     let loadedPromise = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser, false, requestedUrl);
     gBrowser.loadURI(TESTROOT2 + "enabled.html");
     yield loadedPromise;
-    PopupNotifications.panel.removeEventListener("popuphiding", testFail, false);
+    PopupNotifications.panel.removeEventListener("popuphiding", testFail);
 
     let installs = yield getInstalls();
     is(installs.length, 1, "Should be one pending install");

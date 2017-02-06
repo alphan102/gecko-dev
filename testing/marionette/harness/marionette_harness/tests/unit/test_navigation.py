@@ -9,6 +9,7 @@ import urllib
 from marionette_driver import errors, By, Wait
 from marionette_harness import (
     MarionetteTestCase,
+    run_if_manage_instance,
     skip,
     skip_if_mobile,
     WindowManagerMixin,
@@ -107,14 +108,17 @@ class TestNavigate(WindowManagerMixin, MarionetteTestCase):
         self.assertTrue(self.marionette.execute_script(
             "return window.document.getElementById('someDiv') == undefined"))
 
-    @skip("Disabled due to Bug 977899")
-    def test_navigate_frame(self):
-        self.marionette.navigate(self.marionette.absolute_url("test_iframe.html"))
-        self.marionette.switch_to_frame(0)
-        self.marionette.navigate(self.marionette.absolute_url("empty.html"))
-        self.assertTrue('empty.html' in self.marionette.get_url())
-        self.marionette.switch_to_frame()
-        self.assertTrue('test_iframe.html' in self.marionette.get_url())
+    def test_navigate_in_child_frame_changes_to_top(self):
+        frame_html = self.marionette.absolute_url("frameset.html")
+
+        self.marionette.navigate(frame_html)
+        frame = self.marionette.find_element(By.NAME, "third")
+        self.marionette.switch_to_frame(frame)
+        self.assertRaises(errors.NoSuchElementException,
+                          self.marionette.find_element, By.NAME, "third")
+
+        self.marionette.navigate(frame_html)
+        self.marionette.find_element(By.NAME, "third")
 
     @skip_if_mobile("Bug 1323755 - Socket timeout")
     def test_invalid_protocol(self):
@@ -154,13 +158,18 @@ class TestNavigate(WindowManagerMixin, MarionetteTestCase):
         self.assertTrue(self.marionette.execute_script(
             "return window.visited", sandbox=None))
 
-    @skip_if_mobile("Fennec doesn't support other chrome windows")
+    @skip_if_mobile("Bug 1334095 - Timeout: No new tab has been opened")
     def test_about_blank_for_new_docshell(self):
         """ Bug 1312674 - Hang when loading about:blank for a new docshell."""
-        # Open a window to get a new docshell created for the first tab
-        with self.marionette.using_context("chrome"):
-            tab = self.open_tab(lambda: self.marionette.execute_script(" window.open() "))
-            self.marionette.switch_to_window(tab)
+        def open_with_link():
+            link = self.marionette.find_element(By.ID, "new-blank-tab")
+            link.click()
+
+        # Open a new tab to get a new docshell created
+        self.marionette.navigate(self.marionette.absolute_url("windowHandles.html"))
+        new_tab = self.open_tab(trigger=open_with_link)
+        self.marionette.switch_to_window(new_tab)
+        self.assertEqual(self.marionette.get_url(), "about:blank")
 
         self.marionette.navigate('about:blank')
         self.marionette.close()
@@ -183,6 +192,8 @@ class TestNavigate(WindowManagerMixin, MarionetteTestCase):
         self.marionette.navigate(self.fixtures.where_is("black.png"))
         self.assertIn("black.png", self.marionette.title)
 
+    @run_if_manage_instance("Only runnable if Marionette manages the instance")
+    @skip_if_mobile("Bug 1322993 - Missing temporary folder")
     def test_focus_after_navigation(self):
         self.marionette.quit()
         self.marionette.start_session()

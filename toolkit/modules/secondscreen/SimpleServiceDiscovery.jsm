@@ -62,7 +62,7 @@ var SimpleServiceDiscovery = {
   _forceTrailingSlash(aURL) {
     // Cleanup the URL to make it consistent across devices
     try {
-      aURL = Services.io.newURI(aURL, null, null).spec;
+      aURL = Services.io.newURI(aURL).spec;
     } catch (e) {}
     return aURL;
   },
@@ -369,7 +369,7 @@ var SimpleServiceDiscovery = {
 
         this.addService(aService);
       }
-    }).bind(this), false);
+    }).bind(this));
 
     xhr.send(null);
   },

@@ -324,42 +324,11 @@ MultipartBlobImpl::SetMutable(bool aMutable)
 }
 
 void
-MultipartBlobImpl::InitializeChromeFile(Blob& aBlob,
-                                        const ChromeFilePropertyBag& aBag,
-                                        ErrorResult& aRv)
-{
-  MOZ_ASSERT(!mImmutable, "Something went wrong ...");
-
-  if (mImmutable) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
-    return;
-  }
-
-  MOZ_ASSERT(nsContentUtils::ThreadsafeIsCallerChrome());
-
-  mName = aBag.mName;
-  mContentType = aBag.mType;
-  mIsFromNsIFile = true;
-
-  // XXXkhuey this is terrible
-  if (mContentType.IsEmpty()) {
-    aBlob.GetType(mContentType);
-  }
-
-
-  BlobSet blobSet;
-  blobSet.AppendBlobImpl(aBlob.Impl());
-  mBlobImpls = blobSet.GetBlobImpls();
-
-  SetLengthAndModifiedDate(aRv);
-  NS_WARNING_ASSERTION(!aRv.Failed(), "SetLengthAndModifiedDate failed");
-}
-
-void
 MultipartBlobImpl::InitializeChromeFile(nsPIDOMWindowInner* aWindow,
                                         nsIFile* aFile,
                                         const ChromeFilePropertyBag& aBag,
                                         bool aIsFromNsIFile,
+                                        SystemCallerGuarantee /* unused */,
                                         ErrorResult& aRv)
 {
   MOZ_ASSERT(!mImmutable, "Something went wrong ...");
@@ -367,8 +336,6 @@ MultipartBlobImpl::InitializeChromeFile(nsPIDOMWindowInner* aWindow,
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return;
   }
-
-  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
 
   mName = aBag.mName;
   mContentType = aBag.mType;
@@ -400,7 +367,7 @@ MultipartBlobImpl::InitializeChromeFile(nsPIDOMWindowInner* aWindow,
     aFile->GetLeafName(mName);
   }
 
-  RefPtr<File> blob = File::CreateFromFile(aWindow, aFile, aBag.mTemporary);
+  RefPtr<File> blob = File::CreateFromFile(aWindow, aFile);
 
   // Pre-cache size.
   blob->GetSize(aRv);
@@ -431,6 +398,7 @@ void
 MultipartBlobImpl::InitializeChromeFile(nsPIDOMWindowInner* aWindow,
                                         const nsAString& aData,
                                         const ChromeFilePropertyBag& aBag,
+                                        SystemCallerGuarantee aGuarantee,
                                         ErrorResult& aRv)
 {
   nsCOMPtr<nsIFile> file;
@@ -439,7 +407,7 @@ MultipartBlobImpl::InitializeChromeFile(nsPIDOMWindowInner* aWindow,
     return;
   }
 
-  InitializeChromeFile(aWindow, file, aBag, false, aRv);
+  InitializeChromeFile(aWindow, file, aBag, false, aGuarantee, aRv);
 }
 
 bool

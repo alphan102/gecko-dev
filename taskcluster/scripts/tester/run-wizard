@@ -20,7 +20,7 @@ def call(cmd, **kwargs):
     return subprocess.call(cmd, **kwargs)
 
 
-def wait_for_run_mozharness(timeout=30):
+def wait_for_run_mozharness(timeout=60):
     starttime = datetime.datetime.now()
     while datetime.datetime.now() - starttime < datetime.timedelta(seconds=timeout):
         if os.path.isfile(os.path.join(here, 'run-mozharness')):
@@ -57,13 +57,6 @@ def setup():
     if os.path.exists(mach_dest):
         os.remove(mach_dest)
     os.symlink(mach_src, mach_dest)
-
-    activate = os.path.join(build_dir, 'venv', 'bin', 'activate')
-    if os.path.isfile(activate):
-        # TODO Support other shells
-        bashrc = os.path.expanduser(os.path.join('~', '.bashrc'))
-        with open(bashrc, 'ab') as f:
-            f.write(". {}".format(activate))
 
     print("""
 Mozharness has finished downloading the build and tests to:

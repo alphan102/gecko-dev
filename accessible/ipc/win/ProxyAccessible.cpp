@@ -155,6 +155,23 @@ ProxyAccessible::Value(nsString& aValue) const
   aValue = (wchar_t*)resultWrap;
 }
 
+double
+ProxyAccessible::Step()
+{
+  RefPtr<IGeckoCustom> custom = QueryInterface<IGeckoCustom>(this);
+  if (!custom) {
+    return 0;
+  }
+
+  double increment;
+  HRESULT hr = custom->get_minimumIncrement(&increment);
+  if (FAILED(hr)) {
+    return 0;
+  }
+
+  return increment;
+}
+
 void
 ProxyAccessible::Description(nsString& aDesc) const
 {
@@ -176,18 +193,17 @@ ProxyAccessible::Description(nsString& aDesc) const
 uint64_t
 ProxyAccessible::State() const
 {
-  uint64_t state = 0;
-  RefPtr<IAccessible> acc;
-  if (!GetCOMInterface((void**)getter_AddRefs(acc))) {
-    return state;
+  RefPtr<IGeckoCustom> custom = QueryInterface<IGeckoCustom>(this);
+  if (!custom) {
+    return 0;
   }
 
-  VARIANT varState;
-  HRESULT hr = acc->get_accState(kChildIdSelf, &varState);
+  uint64_t state;
+  HRESULT hr = custom->get_mozState(&state);
   if (FAILED(hr)) {
-    return state;
+    return 0;
   }
-  return uint64_t(varState.lVal);
+  return state;
 }
 
 nsIntRect
@@ -704,6 +720,24 @@ ProxyAccessible::AnchorAt(uint32_t aIdx)
   ProxyAccessible* proxyAnchor = GetProxyFor(Document(), anchor.punkVal);
   anchor.punkVal->Release();
   return proxyAnchor;
+}
+
+void
+ProxyAccessible::DOMNodeID(nsString& aID)
+{
+  aID.Truncate();
+  RefPtr<IGeckoCustom> custom = QueryInterface<IGeckoCustom>(this);
+  if (!custom) {
+    return;
+  }
+
+  BSTR result;
+  HRESULT hr = custom->get_DOMNodeID(&result);
+  _bstr_t resultWrap(result, false);
+  if (FAILED(hr)) {
+    return;
+  }
+  aID = (wchar_t*)resultWrap;
 }
 
 } // namespace a11y

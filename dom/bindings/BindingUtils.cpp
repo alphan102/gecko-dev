@@ -1153,7 +1153,7 @@ QueryInterface(JSContext* cx, unsigned argc, JS::Value* vp)
   // Switch this to UnwrapDOMObjectToISupports once our global objects are
   // using new bindings.
   nsCOMPtr<nsISupports> native;
-  UnwrapArg<nsISupports>(obj, getter_AddRefs(native));
+  UnwrapArg<nsISupports>(cx, obj, getter_AddRefs(native));
   if (!native) {
     return Throw(cx, NS_ERROR_FAILURE);
   }
@@ -1168,7 +1168,7 @@ QueryInterface(JSContext* cx, unsigned argc, JS::Value* vp)
 
   nsCOMPtr<nsIJSID> iid;
   obj = &args[0].toObject();
-  if (NS_FAILED(UnwrapArg<nsIJSID>(obj, getter_AddRefs(iid)))) {
+  if (NS_FAILED(UnwrapArg<nsIJSID>(cx, obj, getter_AddRefs(iid)))) {
     return Throw(cx, NS_ERROR_XPC_BAD_CONVERT_JS);
   }
   MOZ_ASSERT(iid);
@@ -1338,6 +1338,7 @@ XrayResolveAttribute(JSContext* cx, JS::Handle<JSObject*> wrapper,
             desc.setSetter(nullptr);
           }
           desc.object().set(wrapper);
+          desc.value().setUndefined();
           return true;
         }
       }
@@ -2855,6 +2856,50 @@ GenericBindingGetter(JSContext* cx, unsigned argc, JS::Value* vp)
 }
 
 bool
+GenericPromiseReturningBindingGetter(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+  // Make sure to save the callee before someone maybe messes with rval().
+  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+  JS::Rooted<JSObject*> callee(cx, &args.callee());
+
+  // We could invoke GenericBindingGetter here, but that involves an
+  // extra call.  Manually inline it instead.
+  const JSJitInfo *info = FUNCTION_VALUE_TO_JITINFO(args.calleev());
+  prototypes::ID protoID = static_cast<prototypes::ID>(info->protoID);
+  if (!args.thisv().isObject()) {
+    ThrowInvalidThis(cx, args, false, protoID);
+    return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
+                                     args.rval());
+  }
+  JS::Rooted<JSObject*> obj(cx, &args.thisv().toObject());
+
+  void* self;
+  {
+    nsresult rv = UnwrapObject<void>(obj, self, protoID, info->depth);
+    if (NS_FAILED(rv)) {
+      ThrowInvalidThis(cx, args, rv == NS_ERROR_XPC_SECURITY_MANAGER_VETO,
+                       protoID);
+      return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
+                                       args.rval());
+    }
+  }
+  MOZ_ASSERT(info->type() == JSJitInfo::Getter);
+  JSJitGetterOp getter = info->getter;
+  bool ok = getter(cx, obj, self, JSJitGetterCallArgs(args));
+  if (ok) {
+#ifdef DEBUG
+    AssertReturnTypeMatchesJitinfo(info, args.rval());
+#endif
+    return true;
+  }
+
+  // Promise-returning getters always return objects
+  MOZ_ASSERT(info->returnType() == JSVAL_TYPE_OBJECT);
+  return ConvertExceptionToPromise(cx, xpc::XrayAwareCalleeGlobal(callee),
+                                   args.rval());
+}
+
+bool
 GenericBindingSetter(JSContext* cx, unsigned argc, JS::Value* vp)
 {
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -3109,7 +3154,8 @@ CallerSubsumes(JSObject *aObject)
 }
 
 nsresult
-UnwrapArgImpl(JS::Handle<JSObject*> src,
+UnwrapArgImpl(JSContext* cx,
+              JS::Handle<JSObject*> src,
               const nsIID &iid,
               void **ppArg)
 {
@@ -3129,7 +3175,7 @@ UnwrapArgImpl(JS::Handle<JSObject*> src,
   // Only allow XPCWrappedJS stuff in system code.  Ideally we would remove this
   // even there, but that involves converting some things to WebIDL callback
   // interfaces and making some other things builtinclass...
-  if (!nsContentUtils::IsCallerChrome()) {
+  if (!nsContentUtils::IsSystemCaller(cx)) {
     return NS_ERROR_XPC_BAD_CONVERT_JS;
   }
 
@@ -3147,11 +3193,12 @@ UnwrapArgImpl(JS::Handle<JSObject*> src,
 }
 
 nsresult
-UnwrapWindowProxyImpl(JS::Handle<JSObject*> src,
+UnwrapWindowProxyImpl(JSContext* cx,
+                      JS::Handle<JSObject*> src,
                       nsPIDOMWindowOuter** ppArg)
 {
   nsCOMPtr<nsPIDOMWindowInner> inner;
-  nsresult rv = UnwrapArg<nsPIDOMWindowInner>(src, getter_AddRefs(inner));
+  nsresult rv = UnwrapArg<nsPIDOMWindowInner>(cx, src, getter_AddRefs(inner));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsPIDOMWindowOuter> outer = inner->GetOuterWindow();

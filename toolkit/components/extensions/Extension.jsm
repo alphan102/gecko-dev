@@ -28,7 +28,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 
 /* globals processCount */
 
-XPCOMUtils.defineLazyPreferenceGetter(this, "processCount", "dom.ipc.processCount");
+XPCOMUtils.defineLazyPreferenceGetter(this, "processCount", "dom.ipc.processCount.extension");
 
 XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
                                   "resource://gre/modules/AddonManager.jsm");
@@ -389,6 +389,20 @@ this.ExtensionData = class {
     return result;
   }
 
+  // Compute the difference between two sets of permissions, suitable
+  // for presenting to the user.
+  static comparePermissions(oldPermissions, newPermissions) {
+    // See bug 1331769: should we do something more complicated to
+    // compare host permissions?
+    // e.g., if we go from <all_urls> to a specific host or from
+    // a *.domain.com to specific-host.domain.com that's actually a
+    // drop in permissions but the simple test below will cause a prompt.
+    return {
+      hosts: newPermissions.hosts.filter(perm => !oldPermissions.hosts.includes(perm)),
+      permissions: newPermissions.permissions.filter(perm => !oldPermissions.permissions.includes(perm)),
+    };
+  }
+
   // Reads the extension's |manifest.json| file, and stores its
   // parsed contents in |this.manifest|.
   readManifest() {
@@ -630,6 +644,8 @@ this.Extension = class extends ExtensionData {
     if (this.remote && processCount !== 1) {
       throw new Error("Out-of-process WebExtensions are not supported with multiple child processes");
     }
+    // This is filled in the first time an extension child is created.
+    this.parentMessageManager = null;
 
     this.id = addonData.id;
     this.baseURI = NetUtil.newURI(this.getURL("")).QueryInterface(Ci.nsIURL);
@@ -647,17 +663,6 @@ this.Extension = class extends ExtensionData {
     this.webAccessibleResources = null;
 
     this.emitter = new EventEmitter();
-  }
-
-  get parentMessageManager() {
-    if (this.remote) {
-      // We currently run extensions in the normal web content process. Since
-      // we currently only support remote extensions in single-child e10s,
-      // child 0 is always the current process, and child 1 is always the
-      // remote extension process.
-      return Services.ppmm.getChildAt(1);
-    }
-    return Services.ppmm.getChildAt(0);
   }
 
   static set browserUpdated(updated) {
@@ -713,7 +718,7 @@ this.Extension = class extends ExtensionData {
 
   // Checks that the given URL is a child of our baseURI.
   isExtensionURL(url) {
-    let uri = Services.io.newURI(url, null, null);
+    let uri = Services.io.newURI(url);
 
     let common = this.baseURI.getCommonBaseSpec(uri);
     return common == this.baseURI.spec;
@@ -956,7 +961,7 @@ this.Extension = class extends ExtensionData {
   }
 
   observe(subject, topic, data) {
-    if (topic == "xpcom-shutdown") {
+    if (topic === "xpcom-shutdown") {
       this.cleanupGeneratedFile();
     }
   }

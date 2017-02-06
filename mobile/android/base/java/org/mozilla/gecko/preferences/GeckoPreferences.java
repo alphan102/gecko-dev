@@ -9,7 +9,6 @@ import org.json.JSONArray;
 import org.mozilla.gecko.AboutPages;
 import org.mozilla.gecko.AdjustConstants;
 import org.mozilla.gecko.AppConstants;
-import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.BrowserLocaleManager;
 import org.mozilla.gecko.DataReportingNotification;
@@ -17,7 +16,6 @@ import org.mozilla.gecko.DynamicToolbar;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.Experiments;
 import org.mozilla.gecko.GeckoActivityStatus;
-import org.mozilla.gecko.GeckoApp;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.GeckoProfile;
@@ -31,7 +29,6 @@ import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.TelemetryContract.Method;
 import org.mozilla.gecko.activitystream.ActivityStream;
-import org.mozilla.gecko.background.common.GlobalConstants;
 import org.mozilla.gecko.db.BrowserContract.SuggestedSites;
 import org.mozilla.gecko.feeds.FeedService;
 import org.mozilla.gecko.feeds.action.CheckForUpdatesAction;
@@ -48,8 +45,8 @@ import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.InputOptionsUtils;
-import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.ThreadUtils;
+import org.mozilla.gecko.util.ViewUtil;
 
 import android.annotation.TargetApi;
 import android.app.AlertDialog;
@@ -94,7 +91,7 @@ import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 
-import com.keepsafe.switchboard.SwitchBoard;
+import org.mozilla.gecko.switchboard.SwitchBoard;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -170,6 +167,7 @@ public class GeckoPreferences
     public static final String PREFS_ACTIVITY_STREAM = NON_PREF_PREFIX + "activitystream";
     public static final String PREFS_CATEGORY_EXPERIMENTAL_FEATURES = NON_PREF_PREFIX + "category_experimental";
     public static final String PREFS_COMPACT_TABS = NON_PREF_PREFIX + "compact_tabs";
+    public static final String PREFS_SHOW_QUIT_MENU = NON_PREF_PREFIX + "distribution.show_quit_menu";
 
     private static final String ACTION_STUMBLER_UPLOAD_PREF = "STUMBLER_PREF";
 
@@ -262,6 +260,14 @@ public class GeckoPreferences
         Log.d(LOGTAG, "onLocaleChanged: " + newLocale);
 
         BrowserLocaleManager.getInstance().updateConfiguration(getApplicationContext(), newLocale);
+        //  If activity is not recreated, also update locale to current activity configuration
+        BrowserLocaleManager.getInstance().updateConfiguration(GeckoPreferences.this, newLocale);
+        ViewUtil.setLayoutDirection(getWindow().getDecorView(), newLocale);
+
+        //  Force update navigate up icon by current layout direction
+        final ActionBar actionBar = getSupportActionBar();
+        actionBar.setHomeAsUpIndicator(android.support.v7.appcompat.R.drawable.abc_ic_ab_back_mtrl_am_alpha);
+
         this.lastLocale = newLocale;
 
         if (isMultiPane()) {
@@ -942,10 +948,10 @@ public class GeckoPreferences
      * Restore default search engines in Gecko and retrigger a search engine refresh.
      */
     protected void restoreDefaultSearchEngines() {
-        GeckoAppShell.notifyObservers("SearchEngines:RestoreDefaults", null);
+        EventDispatcher.getInstance().dispatch("SearchEngines:RestoreDefaults", null);
 
         // Send message to Gecko to get engines. SearchPreferenceCategory listens for the response.
-        GeckoAppShell.notifyObservers("SearchEngines:GetVisible", null);
+        EventDispatcher.getInstance().dispatch("SearchEngines:GetVisible", null);
     }
 
     @Override

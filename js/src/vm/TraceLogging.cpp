@@ -112,6 +112,14 @@ js::DestroyTraceLoggerThreadState()
     }
 }
 
+void
+js::DestroyTraceLoggerMainThread(JSRuntime* runtime)
+{
+    if (!EnsureTraceLoggerState())
+        return;
+    traceLoggerState->destroyMainThread(runtime);
+}
+
 bool
 TraceLoggerThread::init()
 {
@@ -199,6 +207,14 @@ TraceLoggerThread::fail(JSContext* cx, const char* error)
     enabled_ = 0;
 
     return false;
+}
+
+void
+TraceLoggerThread::silentFail(const char* error)
+{
+    traceLoggerState->maybeSpewError(error);
+    failed = true;
+    enabled_ = 0;
 }
 
 bool
@@ -669,10 +685,8 @@ TraceLoggerThread::log(uint32_t id)
 
 TraceLoggerThreadState::~TraceLoggerThreadState()
 {
-    for (size_t i = 0; i < mainThreadLoggers.length(); i++)
-        js_delete(mainThreadLoggers[i]);
-
-    mainThreadLoggers.clear();
+    while (TraceLoggerMainThread* logger = traceLoggerMainThreadList.popFirst())
+        js_delete(logger);
 
     if (threadLoggers.initialized()) {
         for (ThreadLoggerHashMap::Range r = threadLoggers.all(); !r.empty(); r.popFront())
@@ -917,7 +931,8 @@ js::TraceLoggerForMainThread(CompileRuntime* runtime)
 TraceLoggerThread*
 TraceLoggerThreadState::forMainThread(CompileRuntime* runtime)
 {
-    return forMainThread(runtime->mainThread());
+    MOZ_ASSERT(runtime->runtimeMatches(TlsContext.get()->runtime()));
+    return forMainThread(TlsContext.get()->runtime());
 }
 
 TraceLoggerThread*
@@ -931,26 +946,23 @@ js::TraceLoggerForMainThread(JSRuntime* runtime)
 TraceLoggerThread*
 TraceLoggerThreadState::forMainThread(JSRuntime* runtime)
 {
-    return forMainThread(&runtime->mainThread);
-}
-
-TraceLoggerThread*
-TraceLoggerThreadState::forMainThread(PerThreadData* mainThread)
-{
     MOZ_ASSERT(initialized);
-    if (!mainThread->traceLogger) {
+    JSContext* cx = runtime->contextFromMainThread();
+
+    if (!cx->traceLogger) {
         LockGuard<Mutex> guard(lock);
 
-        TraceLoggerThread* logger = create();
+        TraceLoggerMainThread* logger = js_new<TraceLoggerMainThread>();
         if (!logger)
             return nullptr;
 
-        if (!mainThreadLoggers.append(logger)) {
+        if (!logger->init()) {
             js_delete(logger);
             return nullptr;
         }
 
-        mainThread->traceLogger = logger;
+        traceLoggerMainThreadList.insertFront(logger);
+        cx->traceLogger = logger;
 
         if (graphSpewingEnabled)
             logger->initGraph();
@@ -959,7 +971,21 @@ TraceLoggerThreadState::forMainThread(PerThreadData* mainThread)
             logger->enable();
     }
 
-    return mainThread->traceLogger;
+    return cx->traceLogger;
+}
+
+void
+TraceLoggerThreadState::destroyMainThread(JSRuntime* runtime)
+{
+    MOZ_ASSERT(initialized);
+    JSContext* cx = runtime->contextFromMainThread();
+    if (cx->traceLogger) {
+        LockGuard<Mutex> guard(lock);
+
+        static_cast<TraceLoggerMainThread*>(cx->traceLogger.ref())->remove();
+        js_delete(cx->traceLogger.ref());
+        cx->traceLogger = nullptr;
+    }
 }
 
 TraceLoggerThread*
@@ -981,9 +1007,14 @@ TraceLoggerThreadState::forThread(const Thread::Id& thread)
     if (p)
         return p->value();
 
-    TraceLoggerThread* logger = create();
+    TraceLoggerThread* logger = js_new<TraceLoggerThread>();
     if (!logger)
         return nullptr;
+
+    if (!logger->init()) {
+        js_delete(logger);
+        return nullptr;
+    }
 
     if (!threadLoggers.add(p, thread, logger)) {
         js_delete(logger);
@@ -995,21 +1026,6 @@ TraceLoggerThreadState::forThread(const Thread::Id& thread)
 
     if (offThreadEnabled)
         logger->enable();
-
-    return logger;
-}
-
-TraceLoggerThread*
-TraceLoggerThreadState::create()
-{
-    TraceLoggerThread* logger = js_new<TraceLoggerThread>();
-    if (!logger)
-        return nullptr;
-
-    if (!logger->init()) {
-        js_delete(logger);
-        return nullptr;
-    }
 
     return logger;
 }

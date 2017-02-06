@@ -33,7 +33,9 @@
 #include "nsIObjectOutputStream.h"
 #include "nsScriptSecurityManager.h"
 #include "nsIPermissionManager.h"
+#include "nsIScriptError.h"
 #include "nsContentUtils.h"
+#include "nsScriptError.h"
 #include "jsfriendapi.h"
 
 using namespace mozilla;
@@ -499,7 +501,7 @@ nsXPConnect::InitClassesWithNewWrappedGlobal(JSContext * aJSContext,
     // Call into XPCWrappedNative to make a new global object, scope, and global
     // prototype.
     xpcObjectHelper helper(aCOMObj);
-    MOZ_ASSERT(helper.GetScriptableFlags() & nsIXPCScriptable::IS_GLOBAL_OBJECT);
+    MOZ_ASSERT(helper.GetScriptableFlags() & XPC_SCRIPTABLE_IS_GLOBAL_OBJECT);
     RefPtr<XPCWrappedNative> wrappedGlobal;
     nsresult rv =
         XPCWrappedNative::WrapNewGlobal(helper, aPrincipal,
@@ -833,11 +835,11 @@ nsXPConnect::GetWrappedNativePrototype(JSContext* aJSContext,
     if (!scope)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
-    XPCNativeScriptableCreateInfo sciProto;
-    XPCWrappedNative::GatherProtoScriptableCreateInfo(aClassInfo, sciProto);
+    nsCOMPtr<nsIXPCScriptable> scrProto =
+        XPCWrappedNative::GatherProtoScriptable(aClassInfo);
 
     AutoMarkingWrappedNativeProtoPtr proto(aJSContext);
-    proto = XPCWrappedNativeProto::GetNewOrUsed(scope, aClassInfo, &sciProto);
+    proto = XPCWrappedNativeProto::GetNewOrUsed(scope, aClassInfo, scrProto);
     if (!proto)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -1132,7 +1134,7 @@ ReadScriptOrFunction(nsIObjectInputStream* stream, JSContext* cx,
     // We don't serialize mutedError-ness of scripts, which is fine as long as
     // we only serialize system and XUL-y things. We can detect this by checking
     // where the caller wants us to deserialize.
-    MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome() ||
+    MOZ_RELEASE_ASSERT(nsContentUtils::IsSystemCaller(cx) ||
                        CurrentGlobalOrNull(cx) == xpc::CompilationScope());
 
     uint32_t size;

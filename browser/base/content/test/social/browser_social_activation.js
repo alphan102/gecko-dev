@@ -241,9 +241,8 @@ var tests = {
     // Create a new tab and load about:addons
     let addonsTab = gBrowser.addTab();
     gBrowser.selectedTab = addonsTab;
-    BrowserOpenAddonsMgr('addons://list/service');
-    gBrowser.selectedBrowser.addEventListener("load", function tabLoad() {
-      gBrowser.selectedBrowser.removeEventListener("load", tabLoad, true);
+    BrowserOpenAddonsMgr("addons://list/service");
+    gBrowser.selectedBrowser.addEventListener("load", function() {
       is(addonsTab.linkedBrowser.currentURI.spec, "about:addons", "about:addons should load into blank tab.");
 
       activateOneProvider(gProviders[0], true, function() {
@@ -277,6 +276,6 @@ var tests = {
           });
         });
       });
-    }, true);
+    }, {capture: true, once: true});
   }
 }

@@ -15,6 +15,7 @@
 #include "nsCookieService.h"
 #include "nsContentUtils.h"
 #include "nsIServiceManager.h"
+#include "nsIScriptSecurityManager.h"
 
 #include "nsIIOService.h"
 #include "nsIPrefBranch.h"
@@ -61,7 +62,7 @@ using namespace mozilla::net;
 // on content processes (see bug 777620), change to use the appropriate app
 // namespace.  For now those IDLs aren't supported on child processes.
 #define DEFAULT_APP_KEY(baseDomain) \
-        nsCookieKey(baseDomain, NeckoOriginAttributes())
+        nsCookieKey(baseDomain, OriginAttributes())
 
 /******************************************************************************
  * nsCookieService impl:
@@ -120,13 +121,15 @@ static const char kPrefThirdPartySession[]    = "network.cookie.thirdparty.sessi
 static const char kCookieLeaveSecurityAlone[] = "network.cookie.leave-secure-alone";
 
 // For telemetry COOKIE_LEAVE_SECURE_ALONE
-#define BLOCKED_SECURE_SET_FROM_HTTP 0
-#define BLOCKED_DOWNGRADE_SECURE     1
-#define DOWNGRADE_SECURE_FROM_SECURE 2
-#define EVICTED_NEWER_INSECURE       3
-#define EVICTED_OLDEST_COOKIE        4
-#define EVICTED_PREFERRED_COOKIE     5
-#define EVICTING_SECURE_BLOCKED      6
+#define BLOCKED_SECURE_SET_FROM_HTTP          0
+#define BLOCKED_DOWNGRADE_SECURE_INEXACT      1
+#define DOWNGRADE_SECURE_FROM_SECURE_INEXACT  2
+#define EVICTED_NEWER_INSECURE                3
+#define EVICTED_OLDEST_COOKIE                 4
+#define EVICTED_PREFERRED_COOKIE              5
+#define EVICTING_SECURE_BLOCKED               6
+#define BLOCKED_DOWNGRADE_SECURE_EXACT        7
+#define DOWNGRADE_SECURE_FROM_SECURE_EXACT    8
 
 static void
 bindCookieParameters(mozIStorageBindingParamsArray *aParamsArray,
@@ -841,7 +844,8 @@ ConvertAppIdToOriginAttrsSQLFunction::OnFunctionCall(
 
   // Create an originAttributes object by inIsolatedMozBrowser.
   // Then create the originSuffix string from this object.
-  NeckoOriginAttributes attrs((inIsolatedMozBrowser ? 1 : 0));
+  OriginAttributes attrs(nsIScriptSecurityManager::NO_APP_ID,
+                         (inIsolatedMozBrowser ? true : false));
   nsAutoCString suffix;
   attrs.CreateSuffix(suffix);
 
@@ -869,7 +873,7 @@ SetAppIdFromOriginAttributesSQLFunction::OnFunctionCall(
 {
   nsresult rv;
   nsAutoCString suffix;
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
 
   rv = aFunctionArguments->GetUTF8String(0, suffix);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -902,7 +906,7 @@ SetInBrowserFromOriginAttributesSQLFunction::OnFunctionCall(
 {
   nsresult rv;
   nsAutoCString suffix;
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
 
   rv = aFunctionArguments->GetUTF8String(0, suffix);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1995,7 +1999,7 @@ nsCookieService::GetCookieStringCommon(nsIURI *aHostURI,
   mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
 
   // Get originAttributes.
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
   if (aChannel) {
     NS_GetOriginAttributes(aChannel, attrs);
   }
@@ -2068,7 +2072,7 @@ nsCookieService::SetCookieStringCommon(nsIURI *aHostURI,
   mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
 
   // Get originAttributes.
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
   if (aChannel) {
     NS_GetOriginAttributes(aChannel, attrs);
   }
@@ -2089,7 +2093,7 @@ nsCookieService::SetCookieStringInternal(nsIURI                 *aHostURI,
                                          nsDependentCString     &aCookieHeader,
                                          const nsCString        &aServerTime,
                                          bool                    aFromHttp,
-                                         const NeckoOriginAttributes &aOriginAttrs,
+                                         const OriginAttributes &aOriginAttrs,
                                          bool                    aIsPrivate,
                                          nsIChannel             *aChannel)
 {
@@ -2358,7 +2362,7 @@ nsCookieService::GetEnumerator(nsISimpleEnumerator **aEnumerator)
 }
 
 static nsresult
-InitializeOriginAttributes(NeckoOriginAttributes* aAttrs,
+InitializeOriginAttributes(OriginAttributes* aAttrs,
                            JS::HandleValue aOriginAttributes,
                            JSContext* aCx,
                            uint8_t aArgc,
@@ -2411,7 +2415,7 @@ nsCookieService::Add(const nsACString &aHost,
 {
   MOZ_ASSERT(aArgc == 0 || aArgc == 1);
 
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
   nsresult rv = InitializeOriginAttributes(&attrs,
                                            aOriginAttributes,
                                            aCx,
@@ -2433,7 +2437,7 @@ nsCookieService::AddNative(const nsACString &aHost,
                            bool              aIsHttpOnly,
                            bool              aIsSession,
                            int64_t           aExpiry,
-                           NeckoOriginAttributes* aOriginAttributes)
+                           OriginAttributes* aOriginAttributes)
 {
   if (NS_WARN_IF(!aOriginAttributes)) {
     return NS_ERROR_FAILURE;
@@ -2477,7 +2481,7 @@ nsCookieService::AddNative(const nsACString &aHost,
 
 
 nsresult
-nsCookieService::Remove(const nsACString& aHost, const NeckoOriginAttributes& aAttrs,
+nsCookieService::Remove(const nsACString& aHost, const OriginAttributes& aAttrs,
                         const nsACString& aName, const nsACString& aPath,
                         bool aBlocked)
 {
@@ -2540,7 +2544,7 @@ nsCookieService::Remove(const nsACString &aHost,
 {
   MOZ_ASSERT(aArgc == 0 || aArgc == 1);
 
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
   nsresult rv = InitializeOriginAttributes(&attrs,
                                            aOriginAttributes,
                                            aCx,
@@ -2557,7 +2561,7 @@ nsCookieService::RemoveNative(const nsACString &aHost,
                               const nsACString &aName,
                               const nsACString &aPath,
                               bool aBlocked,
-                              NeckoOriginAttributes* aOriginAttributes)
+                              OriginAttributes* aOriginAttributes)
 {
   if (NS_WARN_IF(!aOriginAttributes)) {
     return NS_ERROR_FAILURE;
@@ -2912,7 +2916,7 @@ nsCookieService::EnsureReadComplete()
     stmt->GetUTF8String(IDX_BASE_DOMAIN, baseDomain);
 
     nsAutoCString suffix;
-    NeckoOriginAttributes attrs;
+    OriginAttributes attrs;
     stmt->GetUTF8String(IDX_ORIGIN_ATTRIBUTES, suffix);
     // If PopulateFromSuffix failed we just ignore the OA attributes
     // that we don't support
@@ -3063,7 +3067,7 @@ nsCookieService::ImportCookies(nsIFile *aCookieFile)
       continue;
 
     // pre-existing cookies have inIsolatedMozBrowser=false set by default
-    // constructor of NeckoOriginAttributes().
+    // constructor of OriginAttributes().
     nsCookieKey key = DEFAULT_APP_KEY(baseDomain);
 
     // Create a new nsCookie and assign the data. We don't know the cookie
@@ -3196,7 +3200,7 @@ void
 nsCookieService::GetCookieStringInternal(nsIURI *aHostURI,
                                          bool aIsForeign,
                                          bool aHttpBound,
-                                         const NeckoOriginAttributes& aOriginAttrs,
+                                         const OriginAttributes& aOriginAttrs,
                                          bool aIsPrivate,
                                          nsCString &aCookieString)
 {
@@ -3554,6 +3558,9 @@ nsCookieService::AddInternal(const nsCookieKey             &aKey,
   }
   nsListIter exactIter;
   bool foundCookie = false;
+  foundCookie = FindCookie(aKey, aCookie->Host(),
+                           aCookie->Name(), aCookie->Path(), exactIter);
+  bool foundSecureExact = foundCookie && exactIter.Cookie()->IsSecure();
   if (mLeaveSecureAlone) {
     // Step1, call FindSecureCookie(). FindSecureCookie() would
     // find the existing cookie with the security flag and has
@@ -3565,25 +3572,32 @@ nsCookieService::AddInternal(const nsCookieKey             &aKey,
     // of the "request-uri" does not denote a "secure" protocol,
     // then ignore the new cookie.
     // (draft-ietf-httpbis-cookie-alone section 3.2)
-    foundCookie = FindSecureCookie(aKey, aCookie);
-    if (foundCookie && !aCookie->IsSecure()) {
+    if (!aCookie->IsSecure()
+         && (foundSecureExact || FindSecureCookie(aKey, aCookie))) {
       if (!isSecure) {
         COOKIE_LOGFAILURE(SET_COOKIE, aHostURI, aCookieHeader,
-           "cookie can't save because older cookie is secure cookie but newer cookie is non-secure cookie");
-        Telemetry::Accumulate(Telemetry::COOKIE_LEAVE_SECURE_ALONE,
-                              BLOCKED_DOWNGRADE_SECURE);
+          "cookie can't save because older cookie is secure cookie but newer cookie is non-secure cookie");
+        if (foundSecureExact) {
+          Telemetry::Accumulate(Telemetry::COOKIE_LEAVE_SECURE_ALONE,
+                                BLOCKED_DOWNGRADE_SECURE_EXACT);
+        } else {
+          Telemetry::Accumulate(Telemetry::COOKIE_LEAVE_SECURE_ALONE,
+                                BLOCKED_DOWNGRADE_SECURE_INEXACT);
+        }
         return;
       } else {
         // A secure site is allowed to downgrade a secure cookie
-        // but we want to measure anyway
-        Telemetry::Accumulate(Telemetry::COOKIE_LEAVE_SECURE_ALONE,
-                              DOWNGRADE_SECURE_FROM_SECURE);
+        // but we want to measure anyway.
+        if (foundSecureExact) {
+          Telemetry::Accumulate(Telemetry::COOKIE_LEAVE_SECURE_ALONE,
+                                DOWNGRADE_SECURE_FROM_SECURE_EXACT);
+        } else {
+          Telemetry::Accumulate(Telemetry::COOKIE_LEAVE_SECURE_ALONE,
+                                DOWNGRADE_SECURE_FROM_SECURE_INEXACT);
+        }
       }
     }
   }
-
-  foundCookie = FindCookie(aKey, aCookie->Host(),
-                           aCookie->Name(), aCookie->Path(), exactIter);
 
   RefPtr<nsCookie> oldCookie;
   nsCOMPtr<nsIArray> purgedList;
@@ -4543,7 +4557,7 @@ nsCookieService::CookieExists(nsICookie2* aCookie,
   NS_ENSURE_ARG_POINTER(aFoundCookie);
   MOZ_ASSERT(aArgc == 0 || aArgc == 1);
 
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
   nsresult rv = InitializeOriginAttributes(&attrs,
                                            aOriginAttributes,
                                            aCx,
@@ -4557,7 +4571,7 @@ nsCookieService::CookieExists(nsICookie2* aCookie,
 
 NS_IMETHODIMP_(nsresult)
 nsCookieService::CookieExistsNative(nsICookie2* aCookie,
-                                    NeckoOriginAttributes* aOriginAttributes,
+                                    OriginAttributes* aOriginAttributes,
                                     bool* aFoundCookie)
 {
   NS_ENSURE_ARG_POINTER(aCookie);
@@ -4783,7 +4797,7 @@ nsCookieService::GetCookiesFromHost(const nsACString     &aHost,
   rv = GetBaseDomainFromHost(host, baseDomain);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  NeckoOriginAttributes attrs;
+  OriginAttributes attrs;
   rv = InitializeOriginAttributes(&attrs,
                                   aOriginAttributes,
                                   aCx,

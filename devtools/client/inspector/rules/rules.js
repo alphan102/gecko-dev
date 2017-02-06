@@ -703,7 +703,7 @@ CssRuleView.prototype = {
     this.styleWindow = null;
 
     if (this.element.parentNode) {
-      this.element.parentNode.removeChild(this.element);
+      this.element.remove();
     }
 
     if (this._elementStyle) {
@@ -986,12 +986,12 @@ CssRuleView.prototype = {
     header.addEventListener("dblclick", () => {
       this._toggleContainerVisibility(twisty, container, isPseudo,
         !this.showPseudoElements);
-    }, false);
+    });
 
     twisty.addEventListener("click", () => {
       this._toggleContainerVisibility(twisty, container, isPseudo,
         !this.showPseudoElements);
-    }, false);
+    });
 
     if (isPseudo) {
       this._toggleContainerVisibility(twisty, container, isPseudo,
@@ -1089,11 +1089,11 @@ CssRuleView.prototype = {
         this.element.appendChild(div);
       }
 
-      let inheritedSource = rule.inheritedSource;
+      let inheritedSource = rule.inherited;
       if (inheritedSource && inheritedSource !== lastInheritedSource) {
         let div = this.styleDocument.createElementNS(HTML_NS, "div");
         div.className = this._getRuleViewHeaderClassName();
-        div.textContent = inheritedSource;
+        div.textContent = rule.inheritedSource;
         lastInheritedSource = inheritedSource;
         this.element.appendChild(div);
       }
@@ -1607,7 +1607,6 @@ RuleViewTool.prototype = {
           toolbox.getCurrentPanel().selectStyleSheet(url, line, column);
         });
       }
-      return;
     });
   },
 

@@ -3467,7 +3467,7 @@ nsDOMWindowUtils::AddSheet(nsIPreloadedStyleSheet* aSheet, uint32_t aSheetType)
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ENSURE_TRUE(sheet, NS_ERROR_FAILURE);
 
-  if (sheet->GetOwningDocument()) {
+  if (sheet->GetAssociatedDocument()) {
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -4026,7 +4026,10 @@ nsDOMWindowUtils::ForceUseCounterFlush(nsIDOMNode *aNode)
     mozilla::css::ImageLoader* loader = doc->StyleImageLoader();
     loader->FlushUseCounters();
 
-    static_cast<nsDocument*>(doc.get())->ReportUseCounters();
+    // Flush the document and any external documents that it depends on.
+    const auto reportKind
+      = nsDocument::UseCounterReportKind::eIncludeExternalResources;
+    static_cast<nsDocument*>(doc.get())->ReportUseCounters(reportKind);
     return NS_OK;
   }
 

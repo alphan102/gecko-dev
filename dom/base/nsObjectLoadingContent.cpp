@@ -109,6 +109,8 @@ static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
 static const char *kPrefJavaMIME = "plugin.java.mime";
 static const char *kPrefYoutubeRewrite = "plugins.rewrite_youtube_embeds";
 static const char *kPrefBlockURIs = "browser.safebrowsing.blockedURIs.enabled";
+static const char *kPrefFavorFallbackMode = "plugins.favorfallback.mode";
+static const char *kPrefFavorFallbackRules = "plugins.favorfallback.rules";
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -665,7 +667,9 @@ nsObjectLoadingContent::nsObjectLoadingContent()
   , mIsStopping(false)
   , mIsLoading(false)
   , mScriptRequested(false)
-  , mRewrittenYoutubeEmbed(false) {}
+  , mRewrittenYoutubeEmbed(false)
+  , mPreferFallback(false)
+  , mPreferFallbackKnown(false) {}
 
 nsObjectLoadingContent::~nsObjectLoadingContent()
 {
@@ -865,26 +869,23 @@ void
 nsObjectLoadingContent::GetNestedParams(nsTArray<MozPluginParameter>& aParams,
                                         bool aIgnoreCodebase)
 {
-  nsCOMPtr<nsIDOMElement> domElement =
+  nsCOMPtr<Element> ourElement =
     do_QueryInterface(static_cast<nsIObjectLoadingContent*>(this));
 
-  nsCOMPtr<nsIDOMHTMLCollection> allParams;
+  nsCOMPtr<nsIHTMLCollection> allParams;
   NS_NAMED_LITERAL_STRING(xhtml_ns, "http://www.w3.org/1999/xhtml");
-  domElement->GetElementsByTagNameNS(xhtml_ns,
-        NS_LITERAL_STRING("param"), getter_AddRefs(allParams));
-
-  if (!allParams)
+  ErrorResult rv;
+  allParams = ourElement->GetElementsByTagNameNS(xhtml_ns,
+                                                 NS_LITERAL_STRING("param"),
+                                                 rv);
+  if (rv.Failed()) {
     return;
+  }
+  MOZ_ASSERT(allParams);
 
-  uint32_t numAllParams;
-  allParams->GetLength(&numAllParams);
+  uint32_t numAllParams = allParams->Length();
   for (uint32_t i = 0; i < numAllParams; i++) {
-    nsCOMPtr<nsIDOMNode> pNode;
-    allParams->Item(i, getter_AddRefs(pNode));
-    nsCOMPtr<nsIDOMElement> element = do_QueryInterface(pNode);
-
-    if (!element)
-      continue;
+    RefPtr<Element> element = allParams->Item(i);
 
     nsAutoString name;
     element->GetAttribute(NS_LITERAL_STRING("name"), name);
@@ -892,16 +893,13 @@ nsObjectLoadingContent::GetNestedParams(nsTArray<MozPluginParameter>& aParams,
     if (name.IsEmpty())
       continue;
 
-    nsCOMPtr<nsIDOMNode> parent;
+    nsCOMPtr<nsIContent> parent = element->GetParent();
     nsCOMPtr<nsIDOMHTMLObjectElement> domObject;
     nsCOMPtr<nsIDOMHTMLAppletElement> domApplet;
-    pNode->GetParentNode(getter_AddRefs(parent));
     while (!(domObject || domApplet) && parent) {
       domObject = do_QueryInterface(parent);
       domApplet = do_QueryInterface(parent);
-      nsCOMPtr<nsIDOMNode> temp;
-      parent->GetParentNode(getter_AddRefs(temp));
-      parent = temp;
+      parent = parent->GetParent();
     }
 
     if (domApplet) {
@@ -912,8 +910,7 @@ nsObjectLoadingContent::GetNestedParams(nsTArray<MozPluginParameter>& aParams,
       continue;
     }
 
-    nsCOMPtr<nsIDOMNode> domNode = do_QueryInterface(domElement);
-    if (parent == domNode) {
+    if (parent == ourElement) {
       MozPluginParameter param;
       element->GetAttribute(NS_LITERAL_STRING("name"), param.mName);
       element->GetAttribute(NS_LITERAL_STRING("value"), param.mValue);
@@ -2911,6 +2908,10 @@ nsObjectLoadingContent::ScriptRequestPluginInstance(JSContext* aCx,
   // NB: Sometimes there's a null cx on the stack, in which case |cx| is the
   // safe JS context. But in that case, IsCallerChrome() will return true,
   // so the ensuing expression is short-circuited.
+  // XXXbz the NB comment above doesn't really make sense.  At the moment, all
+  // the callers to this except maybe SetupProtoChain have a useful JSContext*
+  // that could be used for nsContentUtils::IsSystemCaller...  We do need to
+  // sort out what the SetupProtoChain callers look like.
   MOZ_ASSERT_IF(nsContentUtils::GetCurrentJSContext(),
                 aCx == nsContentUtils::GetCurrentJSContext());
   bool callerIsContentJS = (nsContentUtils::GetCurrentJSContext() &&
@@ -3163,12 +3164,10 @@ nsObjectLoadingContent::NotifyContentObjectWrapper()
   SetupProtoChain(cx, obj);
 }
 
-NS_IMETHODIMP
-nsObjectLoadingContent::PlayPlugin()
+void
+nsObjectLoadingContent::PlayPlugin(SystemCallerGuarantee, ErrorResult& aRv)
 {
-  if (!nsContentUtils::IsCallerChrome())
-    return NS_OK;
-
+  // This is a ChromeOnly method, so no need to check caller type here.
   if (!mActivated) {
     mActivated = true;
     LOG(("OBJLC [%p]: Activated by user", this));
@@ -3178,10 +3177,8 @@ nsObjectLoadingContent::PlayPlugin()
   // Fallback types >= eFallbackClickToPlay are plugin-replacement types, see
   // header
   if (mType == eType_Null && mFallbackType >= eFallbackClickToPlay) {
-    return LoadObject(true, true);
+    aRv = LoadObject(true, true);
   }
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -3201,14 +3198,6 @@ nsObjectLoadingContent::GetActivated(bool *aActivated)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsObjectLoadingContent::GetPluginFallbackType(uint32_t* aPluginFallbackType)
-{
-  NS_ENSURE_TRUE(nsContentUtils::IsCallerChrome(), NS_ERROR_NOT_AVAILABLE);
-  *aPluginFallbackType = mFallbackType;
-  return NS_OK;
-}
-
 uint32_t
 nsObjectLoadingContent::DefaultFallbackType()
 {
@@ -3220,22 +3209,16 @@ nsObjectLoadingContent::DefaultFallbackType()
   return reason;
 }
 
-NS_IMETHODIMP
-nsObjectLoadingContent::GetRunID(uint32_t* aRunID)
+uint32_t
+nsObjectLoadingContent::GetRunID(SystemCallerGuarantee, ErrorResult& aRv)
 {
-  if (NS_WARN_IF(!nsContentUtils::IsCallerChrome())) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-  if (NS_WARN_IF(!aRunID)) {
-    return NS_ERROR_INVALID_POINTER;
-  }
   if (!mHasRunID) {
     // The plugin instance must not have a run ID, so we must
     // be running the plugin in-process.
-    return NS_ERROR_NOT_IMPLEMENTED;
+    aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
+    return 0;
   }
-  *aRunID = mRunID;
-  return NS_OK;
+  return mRunID;
 }
 
 static bool sPrefsInitialized;
@@ -3293,6 +3276,7 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
   // * Assume a default of click-to-play
   // * If globally disabled, per-site permissions cannot override.
   // * If blocklisted, override the reason with the blocklist reason
+  // * Check if the flash blocking status for this page denies flash from loading.
   // * Check per-site permissions and follow those if specified.
   // * Honor per-plugin disabled permission
   // * Blocklisted plugins are forced to CtP
@@ -3328,9 +3312,7 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
     aReason = eFallbackVulnerableNoUpdate;
   }
 
-  // Check the permission manager for permission based on the principal of
-  // the toplevel content.
-
+  // Document and window lookup
   nsCOMPtr<nsIContent> thisContent = do_QueryInterface(static_cast<nsIObjectLoadingContent*>(this));
   MOZ_ASSERT(thisContent);
   nsIDocument* ownerDoc = thisContent->OwnerDoc();
@@ -3344,6 +3326,18 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
   nsCOMPtr<nsIDocument> topDoc = topWindow->GetDoc();
   NS_ENSURE_TRUE(topDoc, false);
 
+  // Check the flash blocking status for this page (this applies to Flash only)
+  nsIDocument::FlashClassification documentClassification = nsIDocument::FlashClassification::Allowed;
+  if (IsFlashMIME(mContentType)) {
+    documentClassification = ownerDoc->DocumentFlashClassification();
+  }
+  if (documentClassification == nsIDocument::FlashClassification::Denied) {
+    aReason = eFallbackSuppressed;
+    return false;
+  }
+
+  // Check the permission manager for permission based on the principal of
+  // the toplevel content.
   nsCOMPtr<nsIPermissionManager> permissionManager = services::GetPermissionManager();
   NS_ENSURE_TRUE(permissionManager, false);
 
@@ -3372,11 +3366,22 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
     }
     switch (permission) {
     case nsIPermissionManager::ALLOW_ACTION:
+      if (PreferFallback(false /* isPluginClickToPlay */)) {
+        aReason = eFallbackAlternate;
+        return false;
+      }
+
       return true;
     case nsIPermissionManager::DENY_ACTION:
       aReason = eFallbackDisabled;
       return false;
     case nsIPermissionManager::PROMPT_ACTION:
+      if (PreferFallback(true /* isPluginClickToPlay */)) {
+        // False is already returned in this case, but
+        // it's important to correctly set aReason too.
+        aReason = eFallbackAlternate;
+      }
+
       return false;
     case nsIPermissionManager::UNKNOWN_ACTION:
       break;
@@ -3392,13 +3397,148 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
     return false;
   }
 
+  if (PreferFallback(enabledState == nsIPluginTag::STATE_CLICKTOPLAY)) {
+    aReason = eFallbackAlternate;
+    return false;
+  }
+
   switch (enabledState) {
   case nsIPluginTag::STATE_ENABLED:
-    return true;
+    return documentClassification == nsIDocument::FlashClassification::Allowed;
   case nsIPluginTag::STATE_CLICKTOPLAY:
     return false;
   }
   MOZ_CRASH("Unexpected enabledState");
+}
+
+bool
+nsObjectLoadingContent::FavorFallbackMode(bool aIsPluginClickToPlay) {
+  if (!IsFlashMIME(mContentType)) {
+    return false;
+  }
+
+  nsCString prefString;
+  if (NS_SUCCEEDED(Preferences::GetCString(kPrefFavorFallbackMode, &prefString))) {
+    if (aIsPluginClickToPlay &&
+        prefString.EqualsLiteral("follow-ctp")) {
+      return true;
+    }
+
+    if (prefString.EqualsLiteral("always")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool
+nsObjectLoadingContent::HasGoodFallback() {
+  nsCOMPtr<nsIContent> thisContent =
+  do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
+  NS_ASSERTION(thisContent, "must be a content");
+
+  if (!thisContent->IsHTMLElement(nsGkAtoms::object) ||
+      mContentType.IsEmpty()) {
+    return false;
+  }
+
+  nsTArray<nsCString> rulesList;
+  nsCString prefString;
+  if (NS_SUCCEEDED(Preferences::GetCString(kPrefFavorFallbackRules, &prefString))) {
+      ParseString(prefString, ',', rulesList);
+  }
+
+  for (uint32_t i = 0; i < rulesList.Length(); ++i) {
+    // RULE "embed":
+    // Don't use fallback content if the object contains an <embed> inside its
+    // fallback content.
+    if (rulesList[i].EqualsLiteral("embed")) {
+      nsTArray<nsINodeList*> childNodes;
+      for (nsIContent* child = thisContent->GetFirstChild();
+           child;
+           child = child->GetNextNode(thisContent)) {
+        if (child->IsHTMLElement(nsGkAtoms::embed)) {
+          return false;
+        }
+      }
+    }
+
+    // RULE "video":
+    // Use fallback content if the object contains a <video> inside its
+    // fallback content.
+    if (rulesList[i].EqualsLiteral("video")) {
+      nsTArray<nsINodeList*> childNodes;
+      for (nsIContent* child = thisContent->GetFirstChild();
+           child;
+           child = child->GetNextNode(thisContent)) {
+        if (child->IsHTMLElement(nsGkAtoms::video)) {
+          return true;
+        }
+      }
+    }
+
+    // RULE "adobelink":
+    // Don't use fallback content when it has a link to adobe's website.
+    if (rulesList[i].EqualsLiteral("adobelink")) {
+      nsTArray<nsINodeList*> childNodes;
+      for (nsIContent* child = thisContent->GetFirstChild();
+           child;
+           child = child->GetNextNode(thisContent)) {
+        if (child->IsHTMLElement(nsGkAtoms::a)) {
+          nsCOMPtr<nsIURI> href = child->GetHrefURI();
+          if (href) {
+            nsAutoCString asciiHost;
+            nsresult rv = href->GetAsciiHost(asciiHost);
+            if (NS_SUCCEEDED(rv) &&
+                !asciiHost.IsEmpty() &&
+                (asciiHost.EqualsLiteral("adobe.com") ||
+                 StringEndsWith(asciiHost, NS_LITERAL_CSTRING(".adobe.com")))) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+
+    // RULE "installinstructions":
+    // Don't use fallback content when the text content on the fallback appears
+    // to contain instructions to install or download Flash.
+    if (rulesList[i].EqualsLiteral("installinstructions")) {
+      nsAutoString textContent;
+      ErrorResult rv;
+      thisContent->GetTextContent(textContent, rv);
+      bool hasText =
+        !rv.Failed() &&
+        (CaseInsensitiveFindInReadable(NS_LITERAL_STRING("Flash"), textContent) ||
+         CaseInsensitiveFindInReadable(NS_LITERAL_STRING("Install"), textContent) ||
+         CaseInsensitiveFindInReadable(NS_LITERAL_STRING("Download"), textContent));
+
+      if (hasText) {
+        return false;
+      }
+    }
+
+    // RULE "true":
+    // By having a rule that returns true, we can put it at the end of the rules list
+    // to change the default-to-false behavior to be default-to-true.
+    if (rulesList[i].EqualsLiteral("true")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool
+nsObjectLoadingContent::PreferFallback(bool aIsPluginClickToPlay) {
+  if (mPreferFallbackKnown) {
+    return mPreferFallback;
+  }
+
+  mPreferFallbackKnown = true;
+  mPreferFallback = FavorFallbackMode(aIsPluginClickToPlay) && HasGoodFallback();
+  return mPreferFallback;
 }
 
 nsIDocument*

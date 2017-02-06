@@ -690,8 +690,6 @@ var TelemetryStorageImpl = {
    * @return {promise<object>} Promise that is resolved with the ping data.
    */
   loadArchivedPing: Task.async(function*(id) {
-    this._log.trace("loadArchivedPing - id: " + id);
-
     const data = this._archivedPings.get(id);
     if (!data) {
       this._log.trace("loadArchivedPing - no ping with id: " + id);
@@ -1733,7 +1731,6 @@ var TelemetryStorageImpl = {
   }),
 
   isDeletionPing(aPingId) {
-    this._log.trace("isDeletionPing - id: " + aPingId);
     let pingInfo = this._pendingPings.get(aPingId);
     if (!pingInfo) {
       return false;
@@ -1816,7 +1813,7 @@ function getArchivedPingPath(aPingId, aDate, aType) {
   // Get the ping creation date and generate the archive directory to hold it. Note
   // that getMonth returns a 0-based month, so we need to add an offset.
   let archivedPingDir = OS.Path.join(gPingsArchivePath,
-    aDate.getFullYear() + '-' + addLeftPadding(aDate.getMonth() + 1));
+    aDate.getFullYear() + "-" + addLeftPadding(aDate.getMonth() + 1));
   // Generate the archived ping file path as YYYY-MM/<TIMESTAMP>.UUID.type.json
   let fileName = [aDate.getTime(), aPingId, aType, "json"].join(".");
   return OS.Path.join(archivedPingDir, fileName);

@@ -102,7 +102,10 @@ struct nsRect;
 
 class nsWindowSizes;
 
+class IdleRequestExecutor;
+
 namespace mozilla {
+class AbstractThread;
 class DOMEventTargetHelper;
 class ThrottledEventQueue;
 namespace dom {
@@ -115,9 +118,10 @@ class DocGroup;
 class External;
 class Function;
 class Gamepad;
-enum class ImageBitmapFormat : uint32_t;
+enum class ImageBitmapFormat : uint8_t;
 class IdleRequest;
 class IdleRequestCallback;
+class IncrementalRunnable;
 class Location;
 class MediaQueryList;
 class MozSelfSupport;
@@ -133,6 +137,7 @@ class TabGroup;
 class Timeout;
 class U2F;
 class VRDisplay;
+enum class VRDisplayEventReason : uint8_t;
 class VREventObserver;
 class WakeLock;
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
@@ -754,6 +759,11 @@ public:
   // Called to inform that the set of active VR displays has changed.
   void NotifyActiveVRDisplaysChanged();
 
+  void DispatchVRDisplayActivate(uint32_t aDisplayID,
+                                 mozilla::dom::VRDisplayEventReason aReason);
+  void DispatchVRDisplayDeactivate(uint32_t aDisplayID,
+                                   mozilla::dom::VRDisplayEventReason aReason);
+
 #define EVENT(name_, id_, type_, struct_)                                     \
   mozilla::dom::EventHandlerNonNull* GetOn##name_()                           \
   {                                                                           \
@@ -910,6 +920,7 @@ public:
 
   // https://w3c.github.io/webappsec-secure-contexts/#dom-window-issecurecontext
   bool IsSecureContext() const;
+  bool IsSecureContextIfOpenerIgnored() const;
 
   void GetSidebar(mozilla::dom::OwningExternalOrWindowProxy& aResult,
                   mozilla::ErrorResult& aRv);
@@ -959,6 +970,7 @@ public:
   already_AddRefed<mozilla::dom::cache::CacheStorage> GetCaches(mozilla::ErrorResult& aRv);
   already_AddRefed<mozilla::dom::Promise> Fetch(const mozilla::dom::RequestOrUSVString& aInput,
                                                 const mozilla::dom::RequestInit& aInit,
+                                                mozilla::dom::CallerType aCallerType,
                                                 mozilla::ErrorResult& aRv);
   void PrintOuter(mozilla::ErrorResult& aError);
   void Print(mozilla::ErrorResult& aError);
@@ -970,7 +982,7 @@ public:
                        mozilla::ErrorResult& aError);
   void PostMessageMoz(JSContext* aCx, JS::Handle<JS::Value> aMessage,
                       const nsAString& aTargetOrigin,
-                      const mozilla::dom::Optional<mozilla::dom::Sequence<JS::Value > >& aTransfer,
+                      const mozilla::dom::Sequence<JSObject*>& aTransfer,
                       nsIPrincipal& aSubjectPrincipal,
                       mozilla::ErrorResult& aError);
   int32_t SetTimeout(JSContext* aCx, mozilla::dom::Function& aFunction,
@@ -1070,7 +1082,6 @@ public:
   {
     return GetScrollY(aError);
   }
-  void MozRequestOverfill(mozilla::dom::OverfillCallback& aCallback, mozilla::ErrorResult& aError);
   void GetScreenX(JSContext* aCx, JS::MutableHandle<JS::Value> aValue,
                   mozilla::dom::CallerType aCallerType,
                   mozilla::ErrorResult& aError);
@@ -1104,7 +1115,6 @@ public:
                                const mozilla::dom::IdleRequestOptions& aOptions,
                                mozilla::ErrorResult& aError);
   void CancelIdleCallback(uint32_t aHandle);
-
 
 #ifdef MOZ_WEBSPEECH
   mozilla::dom::SpeechSynthesis*
@@ -1206,7 +1216,7 @@ public:
 
   void Get_content(JSContext* aCx,
                    JS::MutableHandle<JSObject*> aRetval,
-                   mozilla::dom::CallerType aCallerType,
+                   mozilla::dom::SystemCallerGuarantee aCallerType,
                    mozilla::ErrorResult& aError)
   {
     if (mDoc) {
@@ -1562,6 +1572,10 @@ public:
 
   bool GetIsPrerendered();
 
+private:
+  void ReportLargeAllocStatus();
+
+public:
   // Inner windows only.
   nsresult ScheduleNextIdleObserverCallback();
   uint32_t GetFuzzTimeMS();
@@ -1748,9 +1762,16 @@ private:
 
   void DisconnectEventTargetObjects();
 
+
+  enum class SecureContextFlags {
+    eDefault,
+    eIgnoreOpener
+  };
   // Called only on outer windows to compute the value that will be returned by
   // IsSecureContext() for the inner window that corresponds to aDocument.
-  bool ComputeIsSecureContext(nsIDocument* aDocument);
+  bool ComputeIsSecureContext(nsIDocument* aDocument,
+                              SecureContextFlags aFlags =
+                                SecureContextFlags::eDefault);
 
   // nsPIDOMWindow<T> should be able to see these helper methods.
   friend class nsPIDOMWindow<mozIDOMWindowProxy>;
@@ -1765,11 +1786,26 @@ private:
 public:
   // Dispatch a runnable related to the global.
   virtual nsresult Dispatch(const char* aName,
-                            mozilla::dom::TaskCategory aCategory,
+                            mozilla::TaskCategory aCategory,
                             already_AddRefed<nsIRunnable>&& aRunnable) override;
 
   virtual nsIEventTarget*
-  EventTargetFor(mozilla::dom::TaskCategory aCategory) const override;
+  EventTargetFor(mozilla::TaskCategory aCategory) const override;
+
+  virtual mozilla::AbstractThread*
+  AbstractMainThreadFor(mozilla::TaskCategory aCategory) override;
+
+  void DisableIdleCallbackRequests();
+  uint32_t IdleRequestHandle() const { return mIdleRequestCallbackCounter; }
+  nsresult RunIdleRequest(mozilla::dom::IdleRequest* aRequest,
+                          DOMHighResTimeStamp aDeadline, bool aDidTimeout);
+  nsresult ExecuteIdleRequest(TimeStamp aDeadline);
+  void ScheduleIdleRequestDispatch();
+
+  typedef mozilla::LinkedList<mozilla::dom::IdleRequest> IdleRequests;
+  void InsertIdleCallback(mozilla::dom::IdleRequest* aRequest);
+
+  void RemoveIdleCallback(mozilla::dom::IdleRequest* aRequest);
 
 protected:
   // These members are only used on outer window objects. Make sure
@@ -1784,6 +1820,7 @@ protected:
   bool                          mHavePendingClose : 1;
   bool                          mHadOriginalOpener : 1;
   bool                          mOriginalOpenerWasSecureContext : 1;
+  bool                          mIsSecureContextIfOpenerIgnored : 1;
   bool                          mIsPopupSpam : 1;
 
   // Indicates whether scripts are allowed to close this window.
@@ -1842,6 +1879,8 @@ protected:
   // whether scripts may close the window,
   // even if "dom.allow_scripts_to_close_windows" is false.
   bool                   mAllowScriptsToClose : 1;
+
+  bool mTopLevelOuterContentWindow : 1;
 
   nsCOMPtr<nsIScriptContext>    mContext;
   nsWeakPtr                     mOpener;
@@ -1907,19 +1946,10 @@ protected:
 
   uint32_t mSerial;
 
-  void DisableIdleCallbackRequests();
-  void UnthrottleIdleCallbackRequests();
-
-  void PostThrottledIdleCallback();
-
-  typedef mozilla::LinkedList<mozilla::dom::IdleRequest> IdleRequests;
-  static void InsertIdleCallbackIntoList(mozilla::dom::IdleRequest* aRequest,
-                                         IdleRequests& aList);
-
   // The current idle request callback handle
   uint32_t mIdleRequestCallbackCounter;
   IdleRequests mIdleRequestCallbacks;
-  IdleRequests mThrottledIdleRequestCallbacks;
+  RefPtr<IdleRequestExecutor> mIdleRequestExecutor;
 
 #ifdef DEBUG
   bool mSetOpenerWindowCalled;
@@ -1996,6 +2026,7 @@ protected:
   friend class mozilla::dom::PostMessageEvent;
   friend class DesktopNotification;
   friend class mozilla::dom::TimeoutManager;
+  friend class IdleRequestExecutor;
 
   static WindowByIdTable* sWindowsById;
   static bool sWarnedAboutWindowInternal;

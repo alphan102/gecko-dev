@@ -68,7 +68,7 @@ const PanelUI = {
       this.panel.addEventListener(event, this);
     }
 
-    this.helpView.addEventListener("ViewShowing", this._onHelpViewShow, false);
+    this.helpView.addEventListener("ViewShowing", this._onHelpViewShow);
     this._eventListenersAdded = true;
   },
 
@@ -152,10 +152,9 @@ const PanelUI = {
           anchor = aEvent.target;
         }
 
-        this.panel.addEventListener("popupshown", function onPopupShown() {
-          this.removeEventListener("popupshown", onPopupShown);
+        this.panel.addEventListener("popupshown", function() {
           resolve();
-        });
+        }, {once: true});
 
         let iconAnchor =
           document.getAnonymousElementByAttribute(anchor, "class",

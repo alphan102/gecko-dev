@@ -16,7 +16,7 @@ wasmFailValidateText(`(module (table 10 anyfunc) (func) (elem (f32.const 0) 0) $
 
 assertErrorMessage(() => wasmEvalText(`(module (table 10 anyfunc) (elem (i32.const 10) $f0) ${callee(0)})`), LinkError, /elem segment does not fit/);
 assertErrorMessage(() => wasmEvalText(`(module (table 10 anyfunc) (elem (i32.const 8) $f0 $f0 $f0) ${callee(0)})`), LinkError, /elem segment does not fit/);
-wasmEvalText(`(module (table 0 anyfunc) (func) (elem (i32.const 0x10001)))`);
+assertErrorMessage(() => wasmEvalText(`(module (table 0 anyfunc) (func) (elem (i32.const 0x10001)))`), LinkError, /elem segment does not fit/);
 
 assertErrorMessage(() => wasmEvalText(`(module (table 10 anyfunc) (import "globals" "a" (global i32)) (elem (get_global 0) $f0) ${callee(0)})`, {globals:{a:10}}), LinkError, /elem segment does not fit/);
 assertErrorMessage(() => wasmEvalText(`(module (table 10 anyfunc) (import "globals" "a" (global i32)) (elem (get_global 0) $f0 $f0 $f0) ${callee(0)})`, {globals:{a:8}}), LinkError, /elem segment does not fit/);
@@ -63,6 +63,12 @@ assertEq(call(4), 0);
 assertEq(call(5), 2);
 assertErrorMessage(() => call(6), RuntimeError, /indirect call to null/);
 assertErrorMessage(() => call(10), RuntimeError, /index out of bounds/);
+
+var imports = {a:{b:()=>42}};
+var call = wasmEvalText(`(module (table 10 anyfunc) (elem (i32.const 0) $f0 $f1 $f2) ${callee(0)} (import "a" "b" (func $f1)) (import "a" "b" (func $f2 (result i32))) ${caller})`, imports).exports.call;
+assertEq(call(0), 0);
+assertErrorMessage(() => call(1), RuntimeError, /indirect call signature mismatch/);
+assertEq(call(2), 42);
 
 var tbl = new Table({initial:3, element:"anyfunc"});
 var call = wasmEvalText(`(module (import "a" "b" (table 3 anyfunc)) (export "tbl" table) (elem (i32.const 0) $f0 $f1) ${callee(0)} ${callee(1)} ${caller})`, {a:{b:tbl}}).exports.call;

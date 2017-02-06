@@ -51,7 +51,7 @@ BaselineCompiler::BaselineCompiler(JSContext* cx, TempAllocator& alloc, JSScript
 bool
 BaselineCompiler::init()
 {
-    if (!analysis_.init(alloc_, cx->caches.gsnCache))
+    if (!analysis_.init(alloc_, cx->caches().gsnCache))
         return false;
 
     if (!labels_.init(alloc_, script->length()))
@@ -525,7 +525,7 @@ bool
 BaselineCompiler::emitStackCheck(bool earlyCheck)
 {
     Label skipCall;
-    void* limitAddr = cx->runtime()->addressOfJitStackLimit();
+    void* limitAddr = &cx->runtime()->contextFromMainThread()->jitStackLimit;
     uint32_t slotsSize = script->nslots() * sizeof(Value);
     uint32_t tolerance = earlyCheck ? slotsSize : 0;
 
@@ -697,7 +697,7 @@ BaselineCompiler::emitInterruptCheck()
     frame.syncStack(0);
 
     Label done;
-    void* interrupt = cx->runtimeAddressOfInterruptUint32();
+    void* interrupt = &cx->runtime()->contextFromMainThread()->interrupt_;
     masm.branch32(Assembler::Equal, AbsoluteAddress(interrupt), Imm32(0), &done);
 
     prepareVMCall();
@@ -3978,7 +3978,7 @@ BaselineCompiler::emit_JSOP_MOREITER()
 }
 
 bool
-BaselineCompiler::emit_JSOP_ISNOITER()
+BaselineCompiler::emitIsMagicValue()
 {
     frame.syncStack(0);
 
@@ -3997,6 +3997,12 @@ BaselineCompiler::emit_JSOP_ISNOITER()
 }
 
 bool
+BaselineCompiler::emit_JSOP_ISNOITER()
+{
+    return emitIsMagicValue();
+}
+
+bool
 BaselineCompiler::emit_JSOP_ENDITER()
 {
     if (!emit_JSOP_JUMPTARGET())
@@ -4005,6 +4011,12 @@ BaselineCompiler::emit_JSOP_ENDITER()
 
     ICIteratorClose_Fallback::Compiler compiler(cx);
     return emitOpIC(compiler.getStub(&stubSpace_));
+}
+
+bool
+BaselineCompiler::emit_JSOP_ISGENCLOSING()
+{
+    return emitIsMagicValue();
 }
 
 bool
@@ -4406,9 +4418,9 @@ BaselineCompiler::emit_JSOP_RESUME()
     {
         Register scratchReg = scratch2;
         Label skip;
-        AbsoluteAddress addressOfEnabled(cx->runtime()->spsProfiler.addressOfEnabled());
+        AbsoluteAddress addressOfEnabled(cx->runtime()->geckoProfiler().addressOfEnabled());
         masm.branch32(Assembler::Equal, addressOfEnabled, Imm32(0), &skip);
-        masm.loadPtr(AbsoluteAddress(cx->runtime()->addressOfProfilingActivation()), scratchReg);
+        masm.loadPtr(AbsoluteAddress(cx->addressOfProfilingActivation()), scratchReg);
         masm.storePtr(masm.getStackPointer(),
                       Address(scratchReg, JitActivation::offsetOfLastProfilingFrame()));
         masm.bind(&skip);

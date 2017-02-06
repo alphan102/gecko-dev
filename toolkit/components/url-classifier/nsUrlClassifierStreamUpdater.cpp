@@ -24,8 +24,7 @@
 #include "mozilla/Telemetry.h"
 #include "nsContentUtils.h"
 #include "nsIURLFormatter.h"
-
-using mozilla::DocShellOriginAttributes;
+#include "Classifier.h"
 
 static const char* gQuitApplicationMessage = "quit-application";
 
@@ -99,6 +98,7 @@ nsUrlClassifierStreamUpdater::DownloadDone()
   mSuccessCallback = nullptr;
   mUpdateErrorCallback = nullptr;
   mDownloadErrorCallback = nullptr;
+  mTelemetryProvider.Truncate();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -131,9 +131,9 @@ nsUrlClassifierStreamUpdater::FetchUpdate(nsIURI *aUpdateUrl,
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsILoadInfo> loadInfo = mChannel->GetLoadInfo();
-  mozilla::NeckoOriginAttributes neckoAttrs(false);
-  neckoAttrs.mFirstPartyDomain.AssignLiteral(NECKO_SAFEBROWSING_FIRST_PARTY_DOMAIN);
-  loadInfo->SetOriginAttributes(neckoAttrs);
+  mozilla::OriginAttributes attrs;
+  attrs.mFirstPartyDomain.AssignLiteral(NECKO_SAFEBROWSING_FIRST_PARTY_DOMAIN);
+  loadInfo->SetOriginAttributes(attrs);
 
   mBeganStream = false;
 
@@ -284,6 +284,14 @@ nsUrlClassifierStreamUpdater::DownloadUpdates(
   if (NS_FAILED(rv)) {
     return rv;
   }
+
+  nsCOMPtr<nsIUrlClassifierUtils> urlUtil =
+    do_GetService(NS_URLCLASSIFIERUTILS_CONTRACTID);
+
+  nsTArray<nsCString> tables;
+  mozilla::safebrowsing::Classifier::SplitTables(aRequestTables, tables);
+  urlUtil->GetTelemetryProvider(tables.SafeElementAt(0, EmptyCString()),
+                                mTelemetryProvider);
 
   mSuccessCallback = aSuccessCallback;
   mUpdateErrorCallback = aUpdateErrorCallback;
@@ -637,17 +645,11 @@ nsUrlClassifierStreamUpdater::OnStartRequest(nsIRequest *request,
            spec.get(), this));
     }
 
-    nsCOMPtr<nsIUrlClassifierUtils> urlUtil =
-      do_GetService(NS_URLCLASSIFIERUTILS_CONTRACTID);
-
-    nsCString provider;
-    urlUtil->GetTelemetryProvider(mStreamTable, provider);
-
     if (NS_FAILED(status)) {
       // Assume we're overloading the server and trigger backoff.
       downloadError = true;
       mozilla::Telemetry::Accumulate(mozilla::Telemetry::URLCLASSIFIER_UPDATE_REMOTE_STATUS2,
-                                     provider, 15 /* unknown response code */);
+                                     mTelemetryProvider, 15 /* unknown response code */);
 
     } else {
       bool succeeded = false;
@@ -658,7 +660,7 @@ nsUrlClassifierStreamUpdater::OnStartRequest(nsIRequest *request,
       rv = httpChannel->GetResponseStatus(&requestStatus);
       NS_ENSURE_SUCCESS(rv, rv);
       mozilla::Telemetry::Accumulate(mozilla::Telemetry::URLCLASSIFIER_UPDATE_REMOTE_STATUS2,
-                                     provider, HTTPStatusToBucket(requestStatus));
+                                     mTelemetryProvider, HTTPStatusToBucket(requestStatus));
       LOG(("nsUrlClassifierStreamUpdater::OnStartRequest %s (%d)", succeeded ?
            "succeeded" : "failed", requestStatus));
       if (!succeeded) {

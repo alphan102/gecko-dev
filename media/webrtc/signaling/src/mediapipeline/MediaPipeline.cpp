@@ -48,6 +48,7 @@
 #include "mozilla/SharedThreadPool.h"
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
 #include "mozilla/PeerIdentity.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/TaskQueue.h"
 #endif
 #include "mozilla/gfx/Point.h"
@@ -119,7 +120,6 @@ public:
   VideoFrameConverter()
     : mLength(0)
     , last_img_(-1) // -1 is not a guaranteed invalid serial. See bug 1262134.
-    , disabled_frame_sent_(false)
 #ifdef DEBUG
     , mThrottleCount(0)
     , mThrottleRecord(0)
@@ -183,23 +183,28 @@ public:
       // -1 is not a guaranteed invalid serial. See bug 1262134.
       last_img_ = -1;
 
-      if (disabled_frame_sent_) {
-        // After disabling we just pass one black frame to the encoder.
-        // Allocating and setting it to black steals some performance
-        // that can be avoided. We don't handle resolution changes while
-        // disabled for now.
+      // After disabling, we still want *some* frames to flow to the other side.
+      // It could happen that we drop the packet that carried the first disabled
+      // frame, for instance. Note that this still requires the application to
+      // send a frame, or it doesn't trigger at all.
+      const double disabledMinFps = 1.0;
+      TimeStamp t = aChunk.mTimeStamp;
+      MOZ_ASSERT(!t.IsNull());
+      if (!disabled_frame_sent_.IsNull() &&
+          (t - disabled_frame_sent_).ToSeconds() < (1.0 / disabledMinFps)) {
         return;
       }
 
-      disabled_frame_sent_ = true;
+      disabled_frame_sent_ = t;
     } else {
-      disabled_frame_sent_ = false;
+      // This sets it to the Null time.
+      disabled_frame_sent_ = TimeStamp();
     }
 
     ++mLength; // Atomic
 
     nsCOMPtr<nsIRunnable> runnable =
-      NewRunnableMethod<StorensRefPtrPassByPtr<Image>, bool>(
+      NewRunnableMethod<StoreRefPtrPassByPtr<Image>, bool>(
         this, &VideoFrameConverter::ProcessVideoFrame,
         aChunk.mFrame.GetImage(), forceBlack);
     mTaskQueue->Dispatch(runnable.forget());
@@ -452,7 +457,7 @@ protected:
 
   // Written and read from the queueing thread (normally MSG).
   int32_t last_img_; // serial number of last Image
-  bool disabled_frame_sent_; // If a black frame has been sent after disabling.
+  TimeStamp disabled_frame_sent_; // The time we sent the last disabled frame.
 #ifdef DEBUG
   uint32_t mThrottleCount;
   uint32_t mThrottleRecord;
@@ -745,25 +750,24 @@ MediaPipeline::UpdateTransport_s(int level,
 void
 MediaPipeline::SelectSsrc_m(size_t ssrc_index)
 {
-  RUN_ON_THREAD(sts_thread_,
-                WrapRunnable(
-                    this,
-                    &MediaPipeline::SelectSsrc_s,
-                    ssrc_index),
-                NS_DISPATCH_NORMAL);
+  if (ssrc_index < ssrcs_received_.size()) {
+    uint32_t ssrc = ssrcs_received_[ssrc_index];
+    RUN_ON_THREAD(sts_thread_,
+                  WrapRunnable(
+                               this,
+                               &MediaPipeline::SelectSsrc_s,
+                               ssrc),
+                  NS_DISPATCH_NORMAL);
+
+    conduit_->SetRemoteSSRC(ssrc);
+  }
 }
 
 void
-MediaPipeline::SelectSsrc_s(size_t ssrc_index)
+MediaPipeline::SelectSsrc_s(uint32_t ssrc)
 {
   filter_ = new MediaPipelineFilter;
-  if (ssrc_index < ssrcs_received_.size()) {
-    filter_->AddRemoteSSRC(ssrcs_received_[ssrc_index]);
-  } else {
-    MOZ_MTLOG(ML_WARNING, "SelectSsrc called with " << ssrc_index << " but we "
-                          << "have only seen " << ssrcs_received_.size()
-                          << " ssrcs");
-  }
+  filter_->AddRemoteSSRC(ssrc);
 }
 
 void MediaPipeline::StateChange(TransportFlow *flow, TransportLayer::State state) {
@@ -1454,12 +1458,29 @@ void MediaPipelineTransmit::AttachToTrack(const std::string& track_id) {
             << static_cast<void *>(domtrack_) << " conduit type=" <<
             (conduit_->type() == MediaSessionConduit::AUDIO ?"audio":"video"));
 
-  // Register the Listener directly with the source if we can.
-  // We also register it as a non-direct listener so we fall back to that
-  // if installing the direct listener fails. As a direct listener we get access
-  // to direct unqueued (and not resampled) data.
-  domtrack_->AddDirectListener(listener_);
-  domtrack_->AddListener(listener_);
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
+  // With full duplex we don't risk having audio come in late to the MSG
+  // so we won't need a direct listener.
+  const bool enableDirectListener =
+    !Preferences::GetBool("media.navigator.audio.full_duplex", false);
+#else
+  const bool enableDirectListener = true;
+#endif
+
+  if (domtrack_->AsAudioStreamTrack()) {
+    if (enableDirectListener) {
+      // Register the Listener directly with the source if we can.
+      // We also register it as a non-direct listener so we fall back to that
+      // if installing the direct listener fails. As a direct listener we get access
+      // to direct unqueued (and not resampled) data.
+      domtrack_->AddDirectListener(listener_);
+    }
+    domtrack_->AddListener(listener_);
+  } else if (VideoStreamTrack* video = domtrack_->AsVideoStreamTrack()) {
+    video->AddVideoOutput(listener_);
+  } else {
+    MOZ_ASSERT(false, "Unknown track type");
+  }
 
 #ifndef MOZILLA_INTERNAL_API
   // this enables the unit tests that can't fiddle with principals and the like
@@ -1507,8 +1528,14 @@ MediaPipelineTransmit::DetachMedia()
 {
   ASSERT_ON_THREAD(main_thread_);
   if (domtrack_) {
-    domtrack_->RemoveDirectListener(listener_);
-    domtrack_->RemoveListener(listener_);
+    if (domtrack_->AsAudioStreamTrack()) {
+      domtrack_->RemoveDirectListener(listener_);
+      domtrack_->RemoveListener(listener_);
+    } else if (VideoStreamTrack* video = domtrack_->AsVideoStreamTrack()) {
+      video->RemoveVideoOutput(listener_);
+    } else {
+      MOZ_ASSERT(false, "Unknown track type");
+    }
     domtrack_ = nullptr;
   }
   // Let the listener be destroyed with the pipeline (or later).
@@ -2166,16 +2193,14 @@ public:
   {
 #ifdef MOZILLA_INTERNAL_API
     ReentrantMonitorAutoEnter enter(monitor_);
-#endif // MOZILLA_INTERNAL_API
 
-#if defined(MOZILLA_INTERNAL_API)
     if (buffer) {
       // Create a video frame using |buffer|.
 #ifdef MOZ_WIDGET_GONK
       RefPtr<PlanarYCbCrImage> yuvImage = new GrallocImage();
 #else
       RefPtr<PlanarYCbCrImage> yuvImage = image_container_->CreatePlanarYCbCrImage();
-#endif
+#endif // MOZ_WIDGET_GONK
       uint8_t* frame = const_cast<uint8_t*>(static_cast<const uint8_t*> (buffer));
 
       PlanarYCbCrData yuvData;

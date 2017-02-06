@@ -16,14 +16,14 @@ this.EXPORTED_SYMBOLS = ["AddonBlocklistClient",
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 Cu.import("resource://gre/modules/Services.jsm");
-const { Task } = Cu.import("resource://gre/modules/Task.jsm");
-const { OS } = Cu.import("resource://gre/modules/osfile.jsm");
+const { Task } = Cu.import("resource://gre/modules/Task.jsm", {});
+const { OS } = Cu.import("resource://gre/modules/osfile.jsm", {});
 Cu.importGlobalProperties(["fetch"]);
 
-const { Kinto } = Cu.import("resource://services-common/kinto-offline-client.js");
-const { KintoHttpClient } = Cu.import("resource://services-common/kinto-http-client.js");
-const { FirefoxAdapter } = Cu.import("resource://services-common/kinto-storage-adapter.js");
-const { CanonicalJSON } = Components.utils.import("resource://gre/modules/CanonicalJSON.jsm");
+const { Kinto } = Cu.import("resource://services-common/kinto-offline-client.js", {});
+const { KintoHttpClient } = Cu.import("resource://services-common/kinto-http-client.js", {});
+const { FirefoxAdapter } = Cu.import("resource://services-common/kinto-storage-adapter.js", {});
+const { CanonicalJSON } = Components.utils.import("resource://gre/modules/CanonicalJSON.jsm", {});
 
 const PREF_SETTINGS_SERVER                   = "services.settings.server";
 const PREF_BLOCKLIST_BUCKET                  = "services.blocklist.bucket";
@@ -51,6 +51,7 @@ this.KINTO_STORAGE_PATH    = "kinto.sqlite";
 this.FILENAME_ADDONS_JSON  = "blocklist-addons.json";
 this.FILENAME_GFX_JSON     = "blocklist-gfx.json";
 this.FILENAME_PLUGINS_JSON = "blocklist-plugins.json";
+
 
 function mergeChanges(collection, localRecords, changes) {
   const records = {};
@@ -88,11 +89,11 @@ function fetchRemoteCollection(collection) {
  * persist the local DB.
  */
 function kintoClient(connection, bucket) {
-  let base = Services.prefs.getCharPref(PREF_SETTINGS_SERVER);
+  const remote = Services.prefs.getCharPref(PREF_SETTINGS_SERVER);
 
-  let config = {
-    remote: base,
-    bucket: bucket,
+  const config = {
+    remote,
+    bucket,
     adapter: FirefoxAdapter,
     adapterOptions: {sqliteHandle: connection},
   };
@@ -127,7 +128,7 @@ class BlocklistClient {
           data: payload.data
         };
       } else {
-        const localRecords = (yield collection.list()).data;
+        const {data: localRecords} = yield collection.list();
         const records = mergeChanges(collection, localRecords, payload.changes);
         toSerialize = {
           last_modified: `${payload.lastModified}`,
@@ -156,8 +157,8 @@ class BlocklistClient {
    * @return {Promise}          which rejects on sync or process failure.
    */
   maybeSync(lastModified, serverTime) {
-    let opts = {};
-    let enforceCollectionSigning =
+    const opts = {};
+    const enforceCollectionSigning =
       Services.prefs.getBoolPref(PREF_BLOCKLIST_ENFORCE_SIGNING);
 
     // if there is a signerName and collection signing is enforced, add a
@@ -173,10 +174,10 @@ class BlocklistClient {
       let connection;
       try {
         connection = yield FirefoxAdapter.openConnection({path: KINTO_STORAGE_PATH});
-        let db = kintoClient(connection, this.bucketName);
-        let collection = db.collection(this.collectionName, opts);
+        const db = kintoClient(connection, this.bucketName);
+        const collection = db.collection(this.collectionName, opts);
 
-        let collectionLastModified = yield collection.db.getLastModified();
+        const collectionLastModified = yield collection.db.getLastModified();
         // If the data is up to date, there's no need to sync. We still need
         // to record the fact that a check happened.
         if (lastModified <= collectionLastModified) {
@@ -185,8 +186,8 @@ class BlocklistClient {
         }
         // Fetch changes from server.
         try {
-          let syncResult = yield collection.sync();
-          if (!syncResult.ok) {
+          const {ok} = yield collection.sync();
+          if (!ok) {
             throw new Error("Sync failed");
           }
         } catch (e) {
@@ -195,7 +196,7 @@ class BlocklistClient {
             // local data has been modified in some way.
             // We will attempt to fix this by retrieving the whole
             // remote collection.
-            let payload = yield fetchRemoteCollection(collection);
+            const payload = yield fetchRemoteCollection(collection);
             yield this.validateCollectionSignature(payload, collection, true);
             // if the signature is good (we haven't thrown), and the remote
             // last_modified is newer than the local last_modified, replace the
@@ -210,9 +211,9 @@ class BlocklistClient {
           }
         }
         // Read local collection of records.
-        let list = yield collection.list();
+        const {data} = yield collection.list();
 
-        yield this.processCallback(list.data);
+        yield this.processCallback(data);
 
         // Track last update.
         this.updateLastCheck(serverTime);
@@ -228,7 +229,7 @@ class BlocklistClient {
    * @param {Date} serverTime   the current date return by server.
    */
   updateLastCheck(serverTime) {
-    let checkedServerTimeInSeconds = Math.round(serverTime / 1000);
+    const checkedServerTimeInSeconds = Math.round(serverTime / 1000);
     Services.prefs.setIntPref(this.lastCheckTimePref, checkedServerTimeInSeconds);
   }
 }
@@ -239,8 +240,8 @@ class BlocklistClient {
  * @param {Object} records   current records in the local db.
  */
 function* updateCertBlocklist(records) {
-  let certList = Cc["@mozilla.org/security/certblocklist;1"]
-                   .getService(Ci.nsICertBlocklist);
+  const certList = Cc["@mozilla.org/security/certblocklist;1"]
+                     .getService(Ci.nsICertBlocklist);
   for (let item of records) {
     try {
       if (item.issuerName && item.serialNumber) {
@@ -267,42 +268,41 @@ function* updateCertBlocklist(records) {
  * @param {Object} records   current records in the local db.
  */
 function* updatePinningList(records) {
-  if (Services.prefs.getBoolPref(PREF_BLOCKLIST_PINNING_ENABLED)) {
-    const appInfo = Cc["@mozilla.org/xre/app-info;1"]
-        .getService(Ci.nsIXULAppInfo);
-
-    const siteSecurityService = Cc["@mozilla.org/ssservice;1"]
-        .getService(Ci.nsISiteSecurityService);
-
-    // clear the current preload list
-    siteSecurityService.clearPreloads();
-
-    // write each KeyPin entry to the preload list
-    for (let item of records) {
-      try {
-        const {pinType, pins=[], versions} = item;
-        if (versions.indexOf(appInfo.version) != -1) {
-          if (pinType == "KeyPin" && pins.length) {
-            siteSecurityService.setKeyPins(item.hostName,
-                item.includeSubdomains,
-                item.expires,
-                pins.length,
-                pins, true);
-          }
-          if (pinType == "STSPin") {
-            siteSecurityService.setHSTSPreload(item.hostName,
-                                               item.includeSubdomains,
-                                               item.expires);
-          }
-        }
-      } catch (e) {
-        // prevent errors relating to individual preload entries from causing
-        // sync to fail. We will accumulate telemetry for such failures in bug
-        // 1254099.
-      }
-    }
-  } else {
+  if (!Services.prefs.getBoolPref(PREF_BLOCKLIST_PINNING_ENABLED)) {
     return;
+  }
+  const appInfo = Cc["@mozilla.org/xre/app-info;1"]
+      .getService(Ci.nsIXULAppInfo);
+
+  const siteSecurityService = Cc["@mozilla.org/ssservice;1"]
+      .getService(Ci.nsISiteSecurityService);
+
+  // clear the current preload list
+  siteSecurityService.clearPreloads();
+
+  // write each KeyPin entry to the preload list
+  for (let item of records) {
+    try {
+      const {pinType, pins = [], versions} = item;
+      if (versions.indexOf(appInfo.version) != -1) {
+        if (pinType == "KeyPin" && pins.length) {
+          siteSecurityService.setKeyPins(item.hostName,
+              item.includeSubdomains,
+              item.expires,
+              pins.length,
+              pins, true);
+        }
+        if (pinType == "STSPin") {
+          siteSecurityService.setHSTSPreload(item.hostName,
+                                             item.includeSubdomains,
+                                             item.expires);
+        }
+      }
+    } catch (e) {
+      // prevent errors relating to individual preload entries from causing
+      // sync to fail. We will accumulate telemetry for such failures in bug
+      // 1254099.
+    }
   }
 }
 
@@ -320,9 +320,9 @@ function* updateJSONBlocklist(filename, records) {
     yield OS.File.writeAtomic(path, serialized, {tmpPath: path + ".tmp"});
 
     // Notify change to `nsBlocklistService`
-    const eventData = {filename: filename};
+    const eventData = {filename};
     Services.cpmm.sendAsyncMessage("Blocklist:reload-from-disk", eventData);
-  } catch(e) {
+  } catch (e) {
     Cu.reportError(e);
   }
 }

@@ -117,7 +117,7 @@ public:
   virtual Element* GetEditorRoot() override;
   virtual already_AddRefed<nsIContent> FindSelectionRoot(
                                          nsINode *aNode) override;
-  virtual bool IsAcceptableInputEvent(nsIDOMEvent* aEvent) override;
+  virtual bool IsAcceptableInputEvent(WidgetGUIEvent* aGUIEvent) override;
   virtual already_AddRefed<nsIContent> GetInputEventTargetContent() override;
   virtual bool IsEditable(nsINode* aNode) override;
   using EditorBase::IsEditable;
@@ -161,92 +161,18 @@ public:
   NS_IMETHOD GetHTMLBackgroundColorState(bool* aMixed, nsAString& outColor);
 
   // nsIEditorStyleSheets methods
-  NS_IMETHOD AddStyleSheet(const nsAString& aURL) override;
-  NS_IMETHOD ReplaceStyleSheet(const nsAString& aURL) override;
-  NS_IMETHOD RemoveStyleSheet(const nsAString &aURL) override;
-
-  NS_IMETHOD AddOverrideStyleSheet(const nsAString& aURL) override;
-  NS_IMETHOD ReplaceOverrideStyleSheet(const nsAString& aURL) override;
-  NS_IMETHOD RemoveOverrideStyleSheet(const nsAString &aURL) override;
-
-  NS_IMETHOD EnableStyleSheet(const nsAString& aURL, bool aEnable) override;
+  NS_DECL_NSIEDITORSTYLESHEETS
 
   // nsIEditorMailSupport methods
   NS_DECL_NSIEDITORMAILSUPPORT
 
   // nsITableEditor methods
-  NS_IMETHOD InsertTableCell(int32_t aNumber, bool aAfter) override;
-  NS_IMETHOD InsertTableColumn(int32_t aNumber, bool aAfter) override;
-  NS_IMETHOD InsertTableRow(int32_t aNumber, bool aAfter) override;
-  NS_IMETHOD DeleteTable() override;
-  NS_IMETHOD DeleteTableCell(int32_t aNumber) override;
-  NS_IMETHOD DeleteTableCellContents() override;
-  NS_IMETHOD DeleteTableColumn(int32_t aNumber) override;
-  NS_IMETHOD DeleteTableRow(int32_t aNumber) override;
-  NS_IMETHOD SelectTableCell() override;
-  NS_IMETHOD SelectBlockOfCells(nsIDOMElement* aStartCell,
-                                nsIDOMElement* aEndCell) override;
-  NS_IMETHOD SelectTableRow() override;
-  NS_IMETHOD SelectTableColumn() override;
-  NS_IMETHOD SelectTable() override;
-  NS_IMETHOD SelectAllTableCells() override;
-  NS_IMETHOD SwitchTableCellHeaderType(nsIDOMElement* aSourceCell,
-                                       nsIDOMElement** aNewCell) override;
-  NS_IMETHOD JoinTableCells(bool aMergeNonContiguousContents) override;
-  NS_IMETHOD SplitTableCell() override;
-  NS_IMETHOD NormalizeTable(nsIDOMElement* aTable) override;
-  NS_IMETHOD GetCellIndexes(nsIDOMElement* aCell,
-                            int32_t* aRowIndex, int32_t* aColIndex) override;
-  NS_IMETHOD GetTableSize(nsIDOMElement* aTable,
-                          int32_t* aRowCount, int32_t* aColCount) override;
-  NS_IMETHOD GetCellAt(nsIDOMElement* aTable, int32_t aRowIndex,
-                       int32_t aColIndex, nsIDOMElement **aCell) override;
-  NS_IMETHOD GetCellDataAt(nsIDOMElement* aTable,
-                           int32_t aRowIndex, int32_t aColIndex,
-                           nsIDOMElement** aCell,
-                           int32_t* aStartRowIndex, int32_t* aStartColIndex,
-                           int32_t* aRowSpan, int32_t* aColSpan,
-                           int32_t* aActualRowSpan, int32_t* aActualColSpan,
-                           bool* aIsSelected) override;
-  NS_IMETHOD GetFirstRow(nsIDOMElement* aTableElement,
-                         nsIDOMNode** aRowNode) override;
-  NS_IMETHOD GetNextRow(nsIDOMNode* aCurrentRowNode,
-                        nsIDOMNode** aRowNode) override;
+  NS_DECL_NSITABLEEDITOR
+
   nsresult GetLastCellInRow(nsIDOMNode* aRowNode,
                             nsIDOMNode** aCellNode);
 
-  NS_IMETHOD SetSelectionAfterTableEdit(nsIDOMElement* aTable, int32_t aRow,
-                                        int32_t aCol, int32_t aDirection,
-                                        bool aSelected) override;
-  NS_IMETHOD GetSelectedOrParentTableElement(
-               nsAString& aTagName, int32_t* aSelectedCount,
-               nsIDOMElement** aTableElement) override;
-  NS_IMETHOD GetSelectedCellsType(nsIDOMElement* aElement,
-                                  uint32_t* aSelectionType) override;
-
   nsresult GetCellFromRange(nsRange* aRange, nsIDOMElement** aCell);
-
-  /**
-   * Finds the first selected cell in first range of selection
-   * This is in the *order of selection*, not order in the table
-   * (i.e., each cell added to selection is added in another range
-   *  in the selection's rangelist, independent of location in table)
-   * aRange is optional: returns the range around the cell.
-   */
-  NS_IMETHOD GetFirstSelectedCell(nsIDOMRange** aRange,
-                                  nsIDOMElement** aCell) override;
-  /**
-   * Get next cell until no more are found. Always use GetFirstSelected cell
-   * first aRange is optional: returns the range around the cell.
-   */
-  NS_IMETHOD GetNextSelectedCell(nsIDOMRange** aRange,
-                                 nsIDOMElement** aCell) override;
-
-  /**
-   * Upper-left-most selected cell in table.
-   */
-  NS_IMETHOD GetFirstSelectedCellInTable(int32_t* aRowIndex, int32_t* aColIndex,
-                                         nsIDOMElement** aCell) override;
 
   // Miscellaneous
 
@@ -276,7 +202,7 @@ public:
                                   int32_t* outOffset = 0);
 
   // Overrides of EditorBase interface methods
-  nsresult EndUpdateViewBatch() override;
+  virtual nsresult EndUpdateViewBatch() override;
 
   NS_IMETHOD Init(nsIDOMDocument* aDoc, nsIContent* aRoot,
                   nsISelectionController* aSelCon, uint32_t aFlags,
@@ -501,6 +427,8 @@ protected:
                nsCOMPtr<nsIDOMNode>* outBRNode,
                nsIEditor::EDirection aSelect = nsIEditor::eNone) override;
 
+  nsresult InsertBR(nsCOMPtr<nsIDOMNode>* outBRNode);
+
   // Table Editing (implemented in nsTableEditor.cpp)
 
   /**
@@ -669,12 +597,12 @@ protected:
                                     nsIDOMNode *aDestinationNode,
                                     int32_t aDestinationOffset,
                                     bool aDoDeleteSelection);
-  nsresult InsertFromDataTransfer(dom::DataTransfer* aDataTransfer,
-                                  int32_t aIndex,
-                                  nsIDOMDocument* aSourceDoc,
-                                  nsIDOMNode* aDestinationNode,
-                                  int32_t aDestOffset,
-                                  bool aDoDeleteSelection) override;
+  virtual nsresult InsertFromDataTransfer(dom::DataTransfer* aDataTransfer,
+                                          int32_t aIndex,
+                                          nsIDOMDocument* aSourceDoc,
+                                          nsIDOMNode* aDestinationNode,
+                                          int32_t aDestOffset,
+                                          bool aDoDeleteSelection) override;
   bool HavePrivateHTMLFlavor(nsIClipboard* clipboard );
   nsresult ParseCFHTML(nsCString& aCfhtml, char16_t** aStuffToPaste,
                        char16_t** aCfcontext);
@@ -840,8 +768,8 @@ protected:
                            nsCOMPtr<nsIDOMNode>* outNode,
                            bool bNoBlockCrossing = false);
 
-  nsresult IsFirstEditableChild(nsIDOMNode* aNode, bool* aOutIsFirst);
-  nsresult IsLastEditableChild(nsIDOMNode* aNode, bool* aOutIsLast);
+  bool IsFirstEditableChild(nsINode* aNode);
+  bool IsLastEditableChild(nsINode* aNode);
   nsIContent* GetFirstEditableChild(nsINode& aNode);
   nsIContent* GetLastEditableChild(nsINode& aNode);
 

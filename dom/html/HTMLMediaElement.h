@@ -41,6 +41,7 @@ typedef uint32_t AudibleChangedReasons;
 typedef uint8_t AudibleState;
 
 namespace mozilla {
+class AbstractThread;
 class DecoderDoctorDiagnostics;
 class DOMMediaStream;
 class ErrorResult;
@@ -603,6 +604,10 @@ public:
   // data. Used for debugging purposes.
   void GetMozDebugReaderData(nsAString& aString);
 
+  // Returns a promise which will be resolved after collecting debugging
+  // data from decoder/reader/MDSM. Used for debugging purposes.
+  already_AddRefed<Promise> MozRequestDebugInfo(ErrorResult& aRv);
+
   void MozDumpDebugInfo();
 
   void SetVisible(bool aVisible);
@@ -762,8 +767,12 @@ protected:
   class ShutdownObserver;
 
   MediaDecoderOwner::NextFrameStatus NextFrameStatus();
+
   void SetDecoder(MediaDecoder* aDecoder) {
     MOZ_ASSERT(aDecoder); // Use ShutdownDecoder() to clear.
+    if (mDecoder) {
+      ShutdownDecoder();
+    }
     mDecoder = aDecoder;
   }
 
@@ -1172,6 +1181,8 @@ protected:
     return this;
   }
 
+  virtual AbstractThread* AbstractMainThread() const final override;
+
   // Return true if decoding should be paused
   virtual bool GetPaused() final override
   {
@@ -1250,7 +1261,7 @@ protected:
   // Open unsupported types media with the external app when the media element
   // triggers play() after loaded fail. eg. preload the data before start play.
   void OpenUnsupportedMediaWithExternalAppIfNeeded() const;
-  
+
   // This method moves the mPendingPlayPromises into a temperate object. So the
   // mPendingPlayPromises is cleared after this method call.
   nsTArray<RefPtr<Promise>> TakePendingPlayPromises();
@@ -1272,6 +1283,9 @@ protected:
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
   RefPtr<MediaDecoder> mDecoder;
+
+  // The DocGroup-specific AbstractThread::MainThread() of this HTML element.
+  RefPtr<AbstractThread> mAbstractMainThread;
 
   // Observers listening to changes to the mDecoder principal.
   // Used by streams captured from this element.
@@ -1701,7 +1715,7 @@ private:
   // of tab audio indicator, Fennec's media control.
   // Note: mAudioChannelWrapper might be null after GC happened.
   RefPtr<AudioChannelAgentCallback> mAudioChannelWrapper;
-  
+
   // A list of pending play promises. The elements are pushed during the play()
   // method call and are resolved/rejected during further playback steps.
   nsTArray<RefPtr<Promise>> mPendingPlayPromises;

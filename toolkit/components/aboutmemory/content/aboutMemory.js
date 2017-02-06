@@ -54,7 +54,7 @@ XPCOMUtils.defineLazyGetter(this, "nsGzipConverter",
 var gMgr = Cc["@mozilla.org/memory-reporter-manager;1"]
              .getService(Ci.nsIMemoryReporterManager);
 
-const gPageName = 'about:memory';
+const gPageName = "about:memory";
 document.title = gPageName;
 
 const gUnnamedProcessStr = "Main Process";
@@ -68,9 +68,9 @@ var gIsDiff = false;
 // undone are prefixed with "unsafe"; the rest are prefixed with "safe".
 function flipBackslashes(aUnsafeStr) {
   // Save memory by only doing the replacement if it's necessary.
-  return (aUnsafeStr.indexOf('\\') === -1)
+  return (aUnsafeStr.indexOf("\\") === -1)
          ? aUnsafeStr
-         : aUnsafeStr.replace(/\\/g, '/');
+         : aUnsafeStr.replace(/\\/g, "/");
 }
 
 const gAssertionFailureMsgPrefix = "aboutMemory.js assertion failed: ";
@@ -98,7 +98,7 @@ function handleException(ex) {
     throw ex;
   } else {
     // File or memory reporter problem.  Print a message.
-    updateMainAndFooter(str, HIDE_FOOTER, "badInputWarning");
+    updateMainAndFooter(str, NO_TIMESTAMP, HIDE_FOOTER, "badInputWarning");
   }
 }
 
@@ -110,7 +110,7 @@ function reportAssertionFailure(aMsg) {
 }
 
 function debug(x) {
-  let section = appendElement(document.body, 'div', 'section');
+  let section = appendElement(document.body, "div", "section");
   appendElementWithText(section, "div", "debug", JSON.stringify(x));
 }
 
@@ -135,10 +135,15 @@ var gVerbose;
 var gAnonymize;
 
 // Values for the |aFooterAction| argument to updateTitleMainAndFooter.
-var HIDE_FOOTER = 0;
-var SHOW_FOOTER = 1;
+const HIDE_FOOTER = 0;
+const SHOW_FOOTER = 1;
 
-function updateTitleMainAndFooter(aTitleNote, aMsg, aFooterAction, aClassName) {
+// Values for the |aShowTimestamp| argument to updateTitleMainAndFooter.
+const NO_TIMESTAMP = 0;
+const SHOW_TIMESTAMP = 1;
+
+function updateTitleMainAndFooter(aTitleNote, aMsg, aShowTimestamp,
+                                  aFooterAction, aClassName) {
   document.title = gPageName;
   if (aTitleNote) {
     document.title += " (" + aTitleNote + ")";
@@ -149,11 +154,11 @@ function updateTitleMainAndFooter(aTitleNote, aMsg, aFooterAction, aClassName) {
   gMain.parentNode.replaceChild(tmp, gMain);
   gMain = tmp;
 
-  gMain.classList.remove('hidden');
-  gMain.classList.remove('verbose');
-  gMain.classList.remove('non-verbose');
+  gMain.classList.remove("hidden");
+  gMain.classList.remove("verbose");
+  gMain.classList.remove("non-verbose");
   if (gVerbose) {
-    gMain.classList.add(gVerbose.checked ? 'verbose' : 'non-verbose');
+    gMain.classList.add(gVerbose.checked ? "verbose" : "non-verbose");
   }
 
   let msgElement;
@@ -162,19 +167,26 @@ function updateTitleMainAndFooter(aTitleNote, aMsg, aFooterAction, aClassName) {
     if (aClassName) {
       className = className + " " + aClassName;
     }
-    msgElement = appendElementWithText(gMain, 'div', className, aMsg);
+    if (aShowTimestamp == SHOW_TIMESTAMP) {
+      // JS has many options for pretty-printing timestamps. We use
+      // toISOString() because it has sub-second granularity, which is useful
+      // if you quickly and repeatedly click one of the buttons.
+      aMsg += " (" + (new Date()).toISOString() + ")";
+    }
+    msgElement = appendElementWithText(gMain, "div", className, aMsg);
   }
 
   switch (aFooterAction) {
-   case HIDE_FOOTER: gFooter.classList.add('hidden'); break;
-   case SHOW_FOOTER: gFooter.classList.remove('hidden'); break;
+   case HIDE_FOOTER: gFooter.classList.add("hidden"); break;
+   case SHOW_FOOTER: gFooter.classList.remove("hidden"); break;
    default: assert(false, "bad footer action in updateTitleMainAndFooter");
   }
   return msgElement;
 }
 
-function updateMainAndFooter(aMsg, aFooterAction, aClassName) {
-  return updateTitleMainAndFooter("", aMsg, aFooterAction, aClassName);
+function updateMainAndFooter(aMsg, aShowTimestamp, aFooterAction, aClassName) {
+  return updateTitleMainAndFooter("", aMsg, aShowTimestamp, aFooterAction,
+                                  aClassName);
 }
 
 function appendTextNode(aP, aText) {
@@ -348,9 +360,9 @@ function onLoad() {
 
   appendElementWithText(row4, "div", "opsRowLabel", "Save GC & CC logs");
   appendButton(row4, GCAndCCLogDesc,
-               saveGCLogAndConciseCCLog, "Save concise", 'saveLogsConcise');
+               saveGCLogAndConciseCCLog, "Save concise", "saveLogsConcise");
   appendButton(row4, GCAndCCAllLogDesc,
-               saveGCLogAndVerboseCCLog, "Save verbose", 'saveLogsVerbose');
+               saveGCLogAndVerboseCCLog, "Save verbose", "saveLogsVerbose");
 
   // Three cases here:
   // - DMD is disabled (i.e. not built): don't show the button.
@@ -371,12 +383,12 @@ function onLoad() {
   // Generate the main div, where content ("section" divs) will go.  It's
   // hidden at first.
 
-  gMain = appendElement(document.body, 'div', '');
-  gMain.id = 'mainDiv';
+  gMain = appendElement(document.body, "div", "");
+  gMain.id = "mainDiv";
 
   // Generate the footer.  It's hidden at first.
 
-  gFooter = appendElement(document.body, 'div', 'ancillary hidden');
+  gFooter = appendElement(document.body, "div", "ancillary hidden");
 
   let a = appendElementWithText(gFooter, "a", "option",
                                 "Troubleshooting information");
@@ -393,12 +405,12 @@ function onLoad() {
   // See if we're loading from a file.  (Because about:memory is a non-standard
   // URL, location.search is undefined, so we have to use location.href
   // instead.)
-  let search = location.href.split('?')[1];
+  let search = location.href.split("?")[1];
   if (search) {
-    let searchSplit = search.split('&');
+    let searchSplit = search.split("&");
     for (let i = 0; i < searchSplit.length; i++) {
-      if (searchSplit[i].toLowerCase().startsWith('file=')) {
-        let filename = searchSplit[i].substring('file='.length);
+      if (searchSplit[i].toLowerCase().startsWith("file=")) {
+        let filename = searchSplit[i].substring("file=".length);
         updateAboutMemoryFromFile(decodeURIComponent(filename));
         return;
       }
@@ -411,7 +423,8 @@ function onLoad() {
 function doGC() {
   Services.obs.notifyObservers(null, "child-gc-request", null);
   Cu.forceGC();
-  updateMainAndFooter("Garbage collection completed", HIDE_FOOTER);
+  updateMainAndFooter("Garbage collection completed", SHOW_TIMESTAMP,
+                      HIDE_FOOTER);
 }
 
 function doCC() {
@@ -419,13 +432,15 @@ function doCC() {
   window.QueryInterface(Ci.nsIInterfaceRequestor)
         .getInterface(Ci.nsIDOMWindowUtils)
         .cycleCollect();
-  updateMainAndFooter("Cycle collection completed", HIDE_FOOTER);
+  updateMainAndFooter("Cycle collection completed", SHOW_TIMESTAMP,
+                      HIDE_FOOTER);
 }
 
 function doMMU() {
   Services.obs.notifyObservers(null, "child-mmu-request", null);
   gMgr.minimizeMemoryUsage(
-    () => updateMainAndFooter("Memory minimization completed", HIDE_FOOTER));
+    () => updateMainAndFooter("Memory minimization completed",
+                              SHOW_TIMESTAMP, HIDE_FOOTER));
 }
 
 function doMeasure() {
@@ -441,7 +456,8 @@ function saveGCLogAndVerboseCCLog() {
 }
 
 function doDMD() {
-  updateMainAndFooter("Saving memory reports and DMD output...", HIDE_FOOTER);
+  updateMainAndFooter("Saving memory reports and DMD output...",
+                      NO_TIMESTAMP, HIDE_FOOTER);
   try {
     let dumper = Cc["@mozilla.org/memory-info-dumper;1"]
                    .getService(Ci.nsIMemoryInfoDumper);
@@ -451,9 +467,9 @@ function doDMD() {
                                    /* minimize = */ false);
     updateMainAndFooter("Saved memory reports and DMD reports analysis " +
                         "to the temp directory",
-                        HIDE_FOOTER);
+                        SHOW_TIMESTAMP, HIDE_FOOTER);
   } catch (ex) {
-    updateMainAndFooter(ex.toString(), HIDE_FOOTER);
+    updateMainAndFooter(ex.toString(), NO_TIMESTAMP, HIDE_FOOTER);
   }
 }
 
@@ -461,15 +477,16 @@ function dumpGCLogAndCCLog(aVerbose) {
   let dumper = Cc["@mozilla.org/memory-info-dumper;1"]
                 .getService(Ci.nsIMemoryInfoDumper);
 
-  let inProgress = updateMainAndFooter("Saving logs...", HIDE_FOOTER);
-  let section = appendElement(gMain, 'div', "section");
+  let inProgress = updateMainAndFooter("Saving logs...",
+                                       NO_TIMESTAMP, HIDE_FOOTER);
+  let section = appendElement(gMain, "div", "section");
 
   function displayInfo(gcLog, ccLog, isParent) {
-    appendElementWithText(section, 'div', "",
+    appendElementWithText(section, "div", "",
                           "Saved GC log to " + gcLog.path);
 
     let ccLogType = aVerbose ? "verbose" : "concise";
-    appendElementWithText(section, 'div', "",
+    appendElementWithText(section, "div", "",
                           "Saved " + ccLogType + " CC log to " + ccLog.path);
   }
 
@@ -486,7 +503,7 @@ function dumpGCLogAndCCLog(aVerbose) {
  * reporters.
  */
 function updateAboutMemoryFromReporters() {
-  updateMainAndFooter("Measuring...", HIDE_FOOTER);
+  updateMainAndFooter("Measuring...", NO_TIMESTAMP, HIDE_FOOTER);
 
   try {
     let processLiveMemoryReports =
@@ -498,7 +515,8 @@ function updateAboutMemoryFromReporters() {
       }
 
       let displayReportsAndFooter = function() {
-        updateTitleMainAndFooter("live measurement", "", SHOW_FOOTER);
+        updateTitleMainAndFooter("live measurement", "", NO_TIMESTAMP,
+                                 SHOW_FOOTER);
         aDisplayReports();
       }
 
@@ -608,7 +626,7 @@ function updateAboutMemoryFromJSONString(aStr) {
  *        The function to call and pass the read string to upon completion.
  */
 function loadMemoryReportsFromFile(aFilename, aTitleNote, aFn) {
-  updateMainAndFooter("Loading...", HIDE_FOOTER);
+  updateMainAndFooter("Loading...", NO_TIMESTAMP, HIDE_FOOTER);
 
   try {
     let reader = new FileReader();
@@ -616,7 +634,7 @@ function loadMemoryReportsFromFile(aFilename, aTitleNote, aFn) {
     reader.onabort = () => { throw new Error("FileReader.onabort"); };
     reader.onload = (aEvent) => {
       // Clear "Loading..." from above.
-      updateTitleMainAndFooter(aTitleNote, "", SHOW_FOOTER);
+      updateTitleMainAndFooter(aTitleNote, "", NO_TIMESTAMP, SHOW_FOOTER);
       aFn(aEvent.target.result);
     };
 
@@ -944,7 +962,7 @@ function appendAboutMemoryMain(aProcessReports, aHasMozMallocUsableSize) {
            "bad presence");
 
     let process = aProcess === "" ? gUnnamedProcessStr : aProcess;
-    let unsafeNames = aUnsafePath.split('/');
+    let unsafeNames = aUnsafePath.split("/");
     let unsafeName0 = unsafeNames[0];
     let isDegenerate = unsafeNames.length === 1;
 
@@ -1016,8 +1034,8 @@ function appendAboutMemoryMain(aProcessReports, aHasMozMallocUsableSize) {
       }
 
       // Then sort by resident size.
-      let nodeA = pcollsByProcess[aProcessA]._degenerates['resident'];
-      let nodeB = pcollsByProcess[aProcessB]._degenerates['resident'];
+      let nodeA = pcollsByProcess[aProcessA]._degenerates["resident"];
+      let nodeB = pcollsByProcess[aProcessB]._degenerates["resident"];
       let residentA = nodeA ? nodeA._amount : -1;
       let residentB = nodeB ? nodeB._amount : -1;
 
@@ -1042,7 +1060,7 @@ function appendAboutMemoryMain(aProcessReports, aHasMozMallocUsableSize) {
     // Generate output for each process.
     for (let i = 0; i < processes.length; i++) {
       let process = processes[i];
-      let section = appendElement(gMain, 'div', 'section');
+      let section = appendElement(gMain, "div", "section");
 
       appendProcessAboutMemoryElements(section, i, process,
                                        pcollsByProcess[process]._trees,
@@ -1108,7 +1126,7 @@ TreeNode.prototype = {
       return Math.abs(this._amount);
     }
 
-    if ('_maxAbsDescendant' in this) {
+    if ("_maxAbsDescendant" in this) {
       // We've computed this before? Return the saved value.
       return this._maxAbsDescendant;
     }
@@ -1178,7 +1196,7 @@ function fillInTree(aRoot) {
       // to avoid redundant entries.
       let kid = aT._kids[0];
       let kidBytes = fillInNonLeafNodes(kid);
-      aT._unsafeName += '/' + kid._unsafeName;
+      aT._unsafeName += "/" + kid._unsafeName;
       if (kid._kids) {
         aT._kids = kid._kids;
       } else {
@@ -1208,7 +1226,7 @@ function fillInTree(aRoot) {
           (aT._presence === DReport.PRESENT_IN_FIRST_ONLY ||
            aT._presence === DReport.PRESENT_IN_SECOND_ONLY)) {
         aT._amount += kidsBytes;
-        let fake = new TreeNode('(fake child)', aT._units);
+        let fake = new TreeNode("(fake child)", aT._units);
         fake._presence = DReport.ADDED_FOR_BALANCE;
         fake._amount = aT._amount - kidsBytes;
         aT._kids.push(fake);
@@ -1427,7 +1445,7 @@ function appendProcessAboutMemoryElements(aP, aN, aProcess, aTrees,
       document.documentElement.scrollTop =
         document.querySelector(event.target.href).offsetTop;
       event.preventDefault();
-    }, false);
+    });
 
     // This gives nice spacing when we copy and paste.
     appendElementWithText(aP, "span", "", "\n");
@@ -1500,7 +1518,7 @@ function appendProcessAboutMemoryElements(aP, aN, aProcess, aTrees,
   }
   for (let i = 0; i < otherDegenerates.length; i++) {
     let t = otherDegenerates[i];
-    let padText = pad("", maxStringLength - t.toString().length, ' ');
+    let padText = pad("", maxStringLength - t.toString().length, " ");
     appendTreeElements(pre, t, aProcess, padText);
   }
   appendTextNode(aP, "\n");  // gives nice spacing when we copy and paste
@@ -1681,15 +1699,15 @@ function appendMrNameSpan(aP, aDescription, aUnsafeName, aIsInvalid, aNMerged,
     let c, title;
     switch (aPresence) {
      case DReport.PRESENT_IN_FIRST_ONLY:
-      c = '-';
+      c = "-";
       title = "This value was only present in the first set of memory reports.";
       break;
      case DReport.PRESENT_IN_SECOND_ONLY:
-      c = '+';
+      c = "+";
       title = "This value was only present in the second set of memory reports.";
       break;
      case DReport.ADDED_FOR_BALANCE:
-      c = '!';
+      c = "!";
       title = "One of the sets of memory reports lacked children for this " +
               "node's parent. This is a fake child node added to make the " +
               "two memory sets comparable.";
@@ -1950,7 +1968,8 @@ function saveReportsToFile() {
     let dumper = Cc["@mozilla.org/memory-info-dumper;1"]
                    .getService(Ci.nsIMemoryInfoDumper);
     let finishDumping = () => {
-      updateMainAndFooter("Saved memory reports to " + file.path, HIDE_FOOTER);
+      updateMainAndFooter("Saved memory reports to " + file.path,
+                          SHOW_TIMESTAMP, HIDE_FOOTER);
     }
     dumper.dumpMemoryReportsToNamedFile(file.path, finishDumping, null,
                                         gAnonymize.checked);

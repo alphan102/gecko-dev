@@ -141,7 +141,7 @@
         if (allowOverride) {
           document.getElementById("overrideWeakCryptoPanel").style.display = "flex";
           var overrideLink = document.getElementById("overrideWeakCrypto");
-          overrideLink.addEventListener("click", () => doOverride(overrideLink), false);
+          overrideLink.addEventListener("click", () => doOverride(overrideLink));
         }
 
         if (!gIsCertError) {
@@ -232,7 +232,7 @@
 
         // remove undisplayed errors to avoid bug 39098
         var errContainer = document.getElementById("errorContainer");
-        errContainer.parentNode.removeChild(errContainer);
+        errContainer.remove();
 
         var className = getCSSClass();
         if (className && className != "expertBadCert") {
@@ -291,7 +291,7 @@
                     {bubbles: true,
                      detail: changeEvt.target.checked});
                   document.dispatchEvent(event);
-                }, false);
+                });
             }
             const hasPrefStyleError = [
               "interrupted", // This happens with subresources that are above the max tls
@@ -351,6 +351,9 @@
       function initPageCertError() {
         document.body.className = "certerror";
         document.title = document.getElementById("certErrorPageTitle").textContent;
+        for (let host of document.querySelectorAll(".hostname")) {
+          host.textContent = document.location.hostname;
+        }
 
         setupAdvancedButton(true);
 
@@ -441,7 +444,7 @@
               let debugInfo = document.getElementById("certificateErrorDebugInformation");
               debugInfo.style.display = "block";
               debugInfo.scrollIntoView({block: "start", behavior: "smooth"});
-            }, false);
+            });
           }
         }
 
@@ -547,7 +550,7 @@
       </div>
       <div id="errorDescriptionsContainer">
         <div id="ed_generic">&generic.longDesc;</div>
-        <div id="ed_captivePortal">&captivePortal.longDesc;</div>
+        <div id="ed_captivePortal">&captivePortal.longDesc2;</div>
         <div id="ed_dnsNotFound">&dnsNotFound.longDesc;</div>
         <div id="ed_fileNotFound">&fileNotFound.longDesc;</div>
         <div id="ed_fileAccessDenied">&fileAccessDenied.longDesc;</div>
@@ -595,7 +598,11 @@
         <p id="badStsCertExplanation" hidden="true">&certerror.whatShouldIDo.badStsCertExplanation;</p>
 
         <div id="wrongSystemTimePanel" style="display: none;">
-          &certerror.wrongSystemTime;
+          &certerror.wrongSystemTime2;
+        </div>
+
+        <div id="wrongSystemTimeWithoutReferencePanel" style="display: none;">
+          &certerror.wrongSystemTimeWithoutReference;
         </div>
 
         <!-- Long Description (Note: See netError.dtd for used XHTML tags) -->
@@ -612,7 +619,7 @@
 
         <div id="certErrorAndCaptivePortalButtonContainer" class="button-container">
           <button id="returnButton" class="primary" autocomplete="off" autofocus="true">&returnToPreviousPage.label;</button>
-          <button id="openPortalLoginPageButton" class="primary" autocomplete="off" autofocus="true">&openPortalLoginPage.label;</button>
+          <button id="openPortalLoginPageButton" class="primary" autocomplete="off" autofocus="true">&openPortalLoginPage.label2;</button>
           <div class="button-spacer"></div>
           <button id="advancedButton" autocomplete="off" autofocus="true">&advanced.label;</button>
         </div>

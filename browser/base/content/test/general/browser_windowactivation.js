@@ -138,7 +138,7 @@ function childFunction() {
 
   content.addEventListener("focus", function() {
     sendAsyncMessage("Test:FocusReceived", { });
-  }, false);
+  });
 
   var windowGotActivate = false;
   var windowGotDeactivate = false;
@@ -169,7 +169,7 @@ function childFunction() {
       return; /* hasn't loaded yet */
     }
 
-    let color = content.getComputedStyle(area, "").backgroundColor;
+    let color = content.getComputedStyle(area).backgroundColor;
     if (oldColor != color || !ifChanged) {
       expectingResponse = false;
       oldColor = color;

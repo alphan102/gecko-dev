@@ -443,7 +443,7 @@ PatchBaselineFramesForDebugMode(JSContext* cx, const Debugger::ExecutionObservab
                 MOZ_ASSERT(iter.baselineFrame()->isHandlingException());
                 MOZ_ASSERT(iter.baselineFrame()->overridePc() == pc);
                 uint8_t* retAddr;
-                if (cx->runtime()->spsProfiler.enabled())
+                if (cx->runtime()->geckoProfiler().enabled())
                     retAddr = bl->nativeCodeForPC(script, pc);
                 else
                     retAddr = nullptr;
@@ -691,6 +691,7 @@ RecompileBaselineScriptForDebugMode(JSContext* cx, JSScript* script,
 
 #define PATCHABLE_ICSTUB_KIND_LIST(_)           \
     _(CacheIR_Monitored)                        \
+    _(CacheIR_Updated)                          \
     _(Call_Scripted)                            \
     _(Call_AnyScripted)                         \
     _(Call_Native)                              \
@@ -698,9 +699,7 @@ RecompileBaselineScriptForDebugMode(JSContext* cx, JSScript* script,
     _(Call_ScriptedApplyArray)                  \
     _(Call_ScriptedApplyArguments)              \
     _(Call_ScriptedFunCall)                     \
-    _(GetProp_Generic)                          \
-    _(SetProp_CallScripted)                     \
-    _(SetProp_CallNative)
+    _(GetProp_Generic)
 
 static bool
 CloneOldBaselineStub(JSContext* cx, DebugModeOSREntryVector& entries, size_t entryIndex)
@@ -853,7 +852,7 @@ jit::RecompileOnStackBaselineScriptsForDebugMode(JSContext* cx,
 
     // When the profiler is enabled, we need to have suppressed sampling,
     // since the basline jit scripts are in a state of flux.
-    MOZ_ASSERT(!cx->runtime()->isProfilerSamplingEnabled());
+    MOZ_ASSERT(!cx->isProfilerSamplingEnabled());
 
     // Invalidate all scripts we are recompiling.
     if (Zone* zone = obs.singleZone()) {
@@ -1047,7 +1046,7 @@ JitRuntime::getBaselineDebugModeOSRHandlerAddress(JSContext* cx, bool popFrameRe
         return nullptr;
     return popFrameReg
            ? baselineDebugModeOSRHandler_->raw()
-           : baselineDebugModeOSRHandlerNoFrameRegPopAddr_;
+           : baselineDebugModeOSRHandlerNoFrameRegPopAddr_.ref();
 }
 
 static void

@@ -515,7 +515,9 @@ AsyncCubebTask::Run()
   switch(mOperation) {
     case AsyncCubebOperation::INIT: {
       LIFECYCLE_LOG("AsyncCubebOperation::INIT driver=%p\n", mDriver.get());
-      mDriver->Init();
+      if (!mDriver->Init()) {
+        return NS_ERROR_FAILURE;
+      }
       mDriver->CompleteAudioContextOperations(mOperation);
       break;
     }
@@ -594,7 +596,7 @@ bool IsMacbookOrMacbookAir()
   return false;
 }
 
-void
+bool
 AudioCallbackDriver::Init()
 {
   cubeb* cubebContext = CubebUtils::GetCubebContext();
@@ -603,7 +605,7 @@ AudioCallbackDriver::Init()
     if (!mFromFallback) {
       CubebUtils::ReportCubebStreamInitFailure(true);
     }
-    return;
+    return false;
   }
 
   cubeb_stream_params output;
@@ -624,7 +626,7 @@ AudioCallbackDriver::Init()
 #endif
   if (output.stream_type == CUBEB_STREAM_TYPE_MAX) {
     NS_WARNING("Bad stream type");
-    return;
+    return false;
   }
 #else
   (void)mAudioChannel;
@@ -637,13 +639,16 @@ AudioCallbackDriver::Init()
     output.format = CUBEB_SAMPLE_FLOAT32NE;
   }
 
+  // Graphs are always stereo for now.
+  output.layout = CUBEB_LAYOUT_STEREO;
+
   Maybe<uint32_t> latencyPref = CubebUtils::GetCubebMSGLatencyInFrames();
   if (latencyPref) {
     latency_frames = latencyPref.value();
   } else {
     if (cubeb_get_min_latency(cubebContext, output, &latency_frames) != CUBEB_OK) {
       NS_WARNING("Could not get minimal latency from cubeb.");
-      return;
+      return false;
     }
   }
 
@@ -656,6 +661,7 @@ AudioCallbackDriver::Init()
 
   input = output;
   input.channels = mInputChannels; // change to support optional stereo capture
+  input.layout = CUBEB_LAYOUT_MONO;
 
   cubeb_stream* stream = nullptr;
   CubebUtils::AudioDeviceID input_id = nullptr, output_id = nullptr;
@@ -712,7 +718,7 @@ AudioCallbackDriver::Init()
       nextDriver->SetGraphTime(this, mIterationStart, mIterationEnd);
       mGraphImpl->SetCurrentDriver(nextDriver);
       nextDriver->Start();
-      return;
+      return true;
     }
   }
   bool aec;
@@ -722,9 +728,13 @@ AudioCallbackDriver::Init()
   cubeb_stream_register_device_changed_callback(mAudioStream,
                                                 AudioCallbackDriver::DeviceChangedCallback_s);
 
-  StartStream();
+  if (!StartStream()) {
+    STREAM_LOG(LogLevel::Warning, ("AudioCallbackDriver couldn't start stream."));
+    return false;
+  }
 
   STREAM_LOG(LogLevel::Debug, ("AudioCallbackDriver started."));
+  return true;
 }
 
 
@@ -771,11 +781,12 @@ AudioCallbackDriver::Start()
   initEvent->Dispatch();
 }
 
-void
+bool
 AudioCallbackDriver::StartStream()
 {
   if (cubeb_stream_start(mAudioStream) != CUBEB_OK) {
-    MOZ_CRASH("Could not start cubeb stream for MSG.");
+    NS_WARNING("Could not start cubeb stream for MSG.");
+    return false;
   }
 
   {
@@ -783,6 +794,7 @@ AudioCallbackDriver::StartStream()
     mStarted = true;
     mWaitState = WAITSTATE_RUNNING;
   }
+  return true;
 }
 
 void

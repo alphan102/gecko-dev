@@ -55,7 +55,6 @@ else:
     FINAL_LIBRARY = 'replace_jemalloc'
 
 if CONFIG['MOZ_GLUE_IN_PROGRAM']:
-    SDK_LIBRARY = True
     DIST_INSTALL = True
 
 if CONFIG['_MSC_VER']:
@@ -72,6 +71,8 @@ if CONFIG['GNU_CC']:
     CFLAGS += ['-std=gnu99']
 
 DEFINES['abort'] = 'moz_abort'
+DEFINES['JEMALLOC_ALLOC_JUNK'] = '((uint8_t)0xe4)'
+DEFINES['JEMALLOC_FREE_JUNK']  = '((uint8_t)0xe5)'
 
 LOCAL_INCLUDES += [
     '!src/include',

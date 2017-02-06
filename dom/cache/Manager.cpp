@@ -1215,6 +1215,7 @@ public:
                                         &cacheFound, &mCacheId);
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
     if (cacheFound) {
+      MOZ_DIAGNOSTIC_ASSERT(mCacheId != INVALID_CACHE_ID);
       return rv;
     }
 
@@ -1227,12 +1228,14 @@ public:
     rv = trans.Commit();
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
+    MOZ_DIAGNOSTIC_ASSERT(mCacheId != INVALID_CACHE_ID);
     return rv;
   }
 
   virtual void
   Complete(Listener* aListener, ErrorResult&& aRv) override
   {
+    MOZ_DIAGNOSTIC_ASSERT(aRv.Failed() || mCacheId != INVALID_CACHE_ID);
     aListener->OnOpComplete(Move(aRv), StorageOpenResult(), mCacheId);
   }
 
@@ -1523,7 +1526,7 @@ Manager::ReleaseCacheId(CacheId aCacheId)
   NS_ASSERT_OWNINGTHREAD(Manager);
   for (uint32_t i = 0; i < mCacheIdRefs.Length(); ++i) {
     if (mCacheIdRefs[i].mCacheId == aCacheId) {
-#if !defined(RELEASE_OR_BETA)
+#if defined(DEBUG) || !defined(RELEASE_OR_BETA)
       uint32_t oldRef = mCacheIdRefs[i].mCount;
 #endif
       mCacheIdRefs[i].mCount -= 1;
@@ -1574,7 +1577,7 @@ Manager::ReleaseBodyId(const nsID& aBodyId)
   NS_ASSERT_OWNINGTHREAD(Manager);
   for (uint32_t i = 0; i < mBodyIdRefs.Length(); ++i) {
     if (mBodyIdRefs[i].mBodyId == aBodyId) {
-#if !defined(RELEASE_OR_BETA)
+#if defined(DEBUG) || !defined(RELEASE_OR_BETA)
       uint32_t oldRef = mBodyIdRefs[i].mCount;
 #endif
       mBodyIdRefs[i].mCount -= 1;

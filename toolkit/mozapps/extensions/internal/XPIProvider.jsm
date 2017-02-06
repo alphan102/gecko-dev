@@ -994,7 +994,7 @@ var loadManifestFromWebManifest = Task.async(function*(aUri) {
     let rawManifest = extension.rawManifest;
 
     // As a convenience, allow author to be set if its a string bug 1313567.
-    let creator = typeof(rawManifest.author) === 'string' ? rawManifest.author : null;
+    let creator = typeof(rawManifest.author) === "string" ? rawManifest.author : null;
     let homepageURL = rawManifest.homepage_url;
 
     // Allow developer to override creator and homepage_url.
@@ -1669,7 +1669,7 @@ function flushChromeCaches() {
  */
 function getTemporaryFile() {
   let file = FileUtils.getDir(KEY_TEMPDIR, []);
-  let random = Math.random().toString(36).replace(/0./, '').substr(-3);
+  let random = Math.random().toString(36).replace(/0./, "").substr(-3);
   file.append("tmp-" + random + ".xpi");
   file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
 
@@ -2097,16 +2097,16 @@ function XPIState(saved) {
 }
 
 XPIState.prototype = {
-  fields: [['d', 'descriptor'],
-           ['e', 'enabled'],
-           ['v', 'version'],
-           ['st', 'scanTime'],
-           ['mt', 'manifestTime']],
+  fields: [["d", "descriptor"],
+           ["e", "enabled"],
+           ["v", "version"],
+           ["st", "scanTime"],
+           ["mt", "manifestTime"]],
   /**
    * Return the last modified time, based on enabled/disabled
    */
   get mtime() {
-    if (!this.enabled && ('manifestTime' in this) && this.manifestTime > this.scanTime) {
+    if (!this.enabled && ("manifestTime" in this) && this.manifestTime > this.scanTime) {
       return this.manifestTime;
     }
     return this.scanTime;
@@ -2132,8 +2132,8 @@ XPIState.prototype = {
     let changed = false;
     let scanStarted = Cu.now();
     // For an unknown or enabled add-on, we do a full recursive scan.
-    if (!('scanTime' in this) || this.enabled) {
-      logger.debug('getModTime: Recursive scan of ' + aId);
+    if (!("scanTime" in this) || this.enabled) {
+      logger.debug("getModTime: Recursive scan of " + aId);
       let [modFile, modTime, items] = recursiveLastModifiedTime(aFile);
       XPIProvider._mostRecentlyModifiedFile[aId] = modFile;
       XPIProvider.setTelemetry(aId, "scan_items", items);
@@ -2579,12 +2579,11 @@ this.XPIProvider = {
         return this._resolveURIToFile(aURI);
 
       case "resource":
-        aURI = Services.io.newURI(ResProtocolHandler.resolveURI(aURI), null,
-                                  null);
+        aURI = Services.io.newURI(ResProtocolHandler.resolveURI(aURI));
         return this._resolveURIToFile(aURI);
 
       case "view-source":
-        aURI = Services.io.newURI(aURI.path, null, null);
+        aURI = Services.io.newURI(aURI.path);
         return this._resolveURIToFile(aURI);
 
       case "about":
@@ -4400,7 +4399,7 @@ this.XPIProvider = {
       }
       return;
     } else if (aTopic == NOTIFICATION_TOOLBOXPROCESS_LOADED) {
-      Services.obs.removeObserver(this, NOTIFICATION_TOOLBOXPROCESS_LOADED, false);
+      Services.obs.removeObserver(this, NOTIFICATION_TOOLBOXPROCESS_LOADED);
       this._toolboxProcessLoaded = true;
       BrowserToolboxProcess.on("connectionchange",
                                this.onDebugConnectionChange.bind(this));
@@ -4862,11 +4861,6 @@ this.XPIProvider = {
         // That will be logged below.
       }
 
-      if (!method) {
-        logger.warn("Add-on " + aAddon.id + " is missing bootstrap method " + aMethod);
-        return;
-      }
-
       // Extensions are automatically deinitialized in the correct order at shutdown.
       if (aMethod == "shutdown" && aReason != BOOTSTRAP_REASONS.APP_SHUTDOWN) {
         activeAddon.disable = true;
@@ -4900,12 +4894,16 @@ this.XPIProvider = {
         }
       }
 
-      logger.debug("Calling bootstrap method " + aMethod + " on " + aAddon.id + " version " +
-                   aAddon.version);
-      try {
-        method(params, aReason);
-      } catch (e) {
-        logger.warn("Exception running bootstrap method " + aMethod + " on " + aAddon.id, e);
+      if (!method) {
+        logger.warn("Add-on " + aAddon.id + " is missing bootstrap method " + aMethod);
+      } else {
+        logger.debug("Calling bootstrap method " + aMethod + " on " + aAddon.id + " version " +
+                     aAddon.version);
+        try {
+          method(params, aReason);
+        } catch (e) {
+          logger.warn("Exception running bootstrap method " + aMethod + " on " + aAddon.id, e);
+        }
       }
     } finally {
       // Extensions are automatically initialized in the correct order at startup.
@@ -5296,8 +5294,8 @@ class AddonInstall {
    *         Optional icons for the add-on
    * @param  options.version
    *         An optional version for the add-on
-   * @param  options.permHandler
-   *         A callback to present permissions to the user before installing.
+   * @param  options.promptHandler
+   *         A callback to prompt the user before installing.
    */
   constructor(installLocation, url, options = {}) {
     this.wrapper = new AddonInstallWrapper(this);
@@ -5313,7 +5311,7 @@ class AddonInstall {
     }
     this.hash = this.originalHash;
     this.existingAddon = options.existingAddon || null;
-    this.permHandler = options.permHandler || (() => Promise.resolve());
+    this.promptHandler = options.promptHandler || (() => Promise.resolve());
     this.releaseNotesURI = null;
 
     this.listeners = [];
@@ -5353,9 +5351,9 @@ class AddonInstall {
   install() {
     switch (this.state) {
     case AddonManager.STATE_DOWNLOADED:
-      this.checkPermissions();
+      this.checkPrompt();
       break;
-    case AddonManager.STATE_PERMISSION_GRANTED:
+    case AddonManager.STATE_PROMPTS_DONE:
       this.checkForBlockers();
       break;
     case AddonManager.STATE_READY:
@@ -5621,9 +5619,9 @@ class AddonInstall {
    * STATE_DOWNLOADED (which actually means that the file is available
    * and has been verified).
    */
-  checkPermissions() {
+  checkPrompt() {
     Task.spawn((function*() {
-      if (this.permHandler) {
+      if (this.promptHandler) {
         let info = {
           existingAddon: this.existingAddon ? this.existingAddon.wrapper : null,
           addon: this.addon.wrapper,
@@ -5631,9 +5629,9 @@ class AddonInstall {
         };
 
         try {
-          yield this.permHandler(info);
+          yield this.promptHandler(info);
         } catch (err) {
-          logger.info(`Install of ${this.addon.id} cancelled since user declined permissions`);
+          logger.info(`Install of ${this.addon.id} cancelled by user`);
           this.state = AddonManager.STATE_CANCELLED;
           XPIProvider.removeActiveInstall(this);
           AddonManagerPrivate.callInstallListeners("onInstallCancelled",
@@ -5641,7 +5639,7 @@ class AddonInstall {
           return;
         }
       }
-      this.state = AddonManager.STATE_PERMISSION_GRANTED;
+      this.state = AddonManager.STATE_PROMPTS_DONE;
       this.install();
     }).bind(this));
   }
@@ -6093,8 +6091,8 @@ class DownloadAddonInstall extends AddonInstall {
    *         Optional icons for the add-on
    * @param  options.version
    *         An optional version for the add-on
-   * @param  options.permHandler
-   *         A callback to present permissions to the user before installing.
+   * @param  options.promptHandler
+   *         A callback to prompt the user before installing.
    */
   constructor(installLocation, url, options = {}) {
     super(installLocation, url, options);
@@ -6454,7 +6452,7 @@ class DownloadAddonInstall extends AddonInstall {
     if (iid.equals(Ci.nsIAuthPrompt2)) {
       let win = null;
       if (this.browser) {
-        win = this.browser.contentWindow || this.browser.ownerDocument.defaultView;
+        win = this.browser.contentWindow || this.browser.ownerGlobal;
       }
 
       let factory = Cc["@mozilla.org/prompter;1"].
@@ -6609,8 +6607,8 @@ AddonInstallWrapper.prototype = {
     return installFor(this).sourceURI;
   },
 
-  set _permHandler(handler) {
-    installFor(this).permHandler = handler;
+  set promptHandler(handler) {
+    installFor(this).promptHandler = handler;
   },
 
   install() {
@@ -7311,12 +7309,14 @@ AddonWrapper.prototype = {
       }
     }
 
-    if (this.isActive && addon.iconURL) {
+    let canUseIconURLs = this.isActive ||
+      (addon.type == "theme" && addon.internalName == XPIProvider.defaultSkin);
+    if (canUseIconURLs && addon.iconURL) {
       icons[32] = addon.iconURL;
       icons[48] = addon.iconURL;
     }
 
-    if (this.isActive && addon.icon64URL) {
+    if (canUseIconURLs && addon.icon64URL) {
       icons[64] = addon.icon64URL;
     }
 

@@ -159,28 +159,26 @@ function promise_open_compatibility_window(aInactiveAddonIds) {
         info("Page " + aEvent.target.pageid + " shown");
     }
 
-    win.removeEventListener("load", arguments.callee, false);
+    win.removeEventListener("load", arguments.callee);
 
     info("Compatibility dialog opened");
 
-    win.addEventListener("pageshow", page_shown, false);
+    win.addEventListener("pageshow", page_shown);
     win.addEventListener("unload", function() {
-      win.removeEventListener("unload", arguments.callee, false);
-      win.removeEventListener("pageshow", page_shown, false);
+      win.removeEventListener("pageshow", page_shown);
       dump("Compatibility dialog closed\n");
-    }, false);
+    }, {once: true});
 
     deferred.resolve(win);
-  }, false);
+  });
   return deferred.promise;
 }
 
 function promise_window_close(aWindow) {
   let deferred = Promise.defer();
   aWindow.addEventListener("unload", function() {
-    aWindow.removeEventListener("unload", arguments.callee, false);
     deferred.resolve(aWindow);
-  }, false);
+  }, {once: true});
   return deferred.promise;
 }
 
@@ -191,11 +189,10 @@ function promise_page(aWindow, aPageId) {
     deferred.resolve(aWindow);
   } else {
     page.addEventListener("pageshow", function() {
-      page.removeEventListener("pageshow", arguments.callee, false);
       executeSoon(function() {
         deferred.resolve(aWindow);
       });
-    }, false);
+    }, {once: true});
   }
   return deferred.promise;
 }

@@ -9,8 +9,8 @@ var Ci = Components.interfaces;
 var Cr = Components.results;
 var Cu = Components.utils;
 
-Cu.import('resource://gre/modules/Services.jsm');
-Cu.import('resource://gre/modules/ContentPrefInstance.jsm');
+Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/ContentPrefInstance.jsm");
 
 const CONTENT_PREFS_DB_FILENAME = "content-prefs.sqlite";
 const CONTENT_PREFS_BACKUP_DB_FILENAME = "content-prefs.sqlite.corrupt";
@@ -72,7 +72,7 @@ var ContentPrefTest = {
   // Utilities
 
   getURI: function ContentPrefTest_getURI(spec) {
-    return this._ioSvc.newURI(spec, null, null);
+    return this._ioSvc.newURI(spec);
   },
 
   /**

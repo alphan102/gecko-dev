@@ -21,6 +21,7 @@
 
 #include "nsAppRunner.h"
 #include "mozilla/XREAppData.h"
+#include "mozilla/Bootstrap.h"
 #if defined(MOZ_UPDATER) && !defined(MOZ_WIDGET_ANDROID)
 #include "nsUpdateDriver.h"
 #endif
@@ -97,7 +98,7 @@
 #include <intrin.h>
 #include <math.h>
 #include "cairo/cairo-features.h"
-#include "mozilla/WindowsVersion.h"
+#include "mozilla/WindowsDllBlocklist.h"
 #include "mozilla/mscom/MainThreadRuntime.h"
 #include "mozilla/widget/AudioSession.h"
 
@@ -270,8 +271,8 @@ namespace mozilla {
 LibFuzzerRunner* libFuzzerRunner = 0;
 } // namespace mozilla
 
-extern "C" MOZ_EXPORT void XRE_LibFuzzerSetMain(int argc, char** argv, LibFuzzerMain main) {
-  mozilla::libFuzzerRunner->setParams(argc, argv, main);
+void XRE_LibFuzzerSetDriver(LibFuzzerDriver aDriver) {
+  mozilla::libFuzzerRunner->setParams(aDriver);
 }
 #endif
 
@@ -1075,8 +1076,8 @@ nsXULAppInfo::GetIsOfficial(bool* aResult)
 NS_IMETHODIMP
 nsXULAppInfo::GetWindowsDLLBlocklistStatus(bool* aResult)
 {
-#if defined(XP_WIN)
-  *aResult = gAppData->flags & NS_XRE_DLL_BLOCKLIST_ENABLED;
+#if defined(HAS_DLL_BLOCKLIST)
+  *aResult = DllBlocklist_CheckStatus();
 #else
   *aResult = false;
 #endif
@@ -3023,7 +3024,7 @@ public:
     mAppData = nullptr;
   }
 
-  int XRE_main(int argc, char* argv[], const XREAppData& aAppData);
+  int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig);
   int XRE_mainInit(bool* aExitFlag);
   int XRE_mainStartup(bool* aExitFlag);
   nsresult XRE_mainRun();
@@ -3123,9 +3124,7 @@ XREMain::XRE_mainInit(bool* aExitFlag)
     // dwrite library and create a factory as early as possible so that the
     // FntCache service is ready by the time it's needed.
 
-    if (IsVistaOrLater()) {
-      CreateThread(nullptr, 0, &InitDwriteBG, nullptr, 0, nullptr);
-    }
+    CreateThread(nullptr, 0, &InitDwriteBG, nullptr, 0, nullptr);
   }
 #endif
 
@@ -3182,31 +3181,6 @@ XREMain::XRE_mainInit(bool* aExitFlag)
 
   // XXX Originally ScopedLogging was here? Now it's in XRE_main above
   // XRE_mainInit.
-
-  if (!mAppData->xreDirectory) {
-    nsCOMPtr<nsIFile> lf;
-    rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(lf));
-    if (NS_FAILED(rv))
-      return 2;
-
-    nsCOMPtr<nsIFile> greDir;
-    rv = lf->GetParent(getter_AddRefs(greDir));
-    if (NS_FAILED(rv))
-      return 2;
-
-#ifdef XP_MACOSX
-    nsCOMPtr<nsIFile> parent;
-    greDir->GetParent(getter_AddRefs(parent));
-    greDir = parent.forget();
-    greDir->AppendNative(NS_LITERAL_CSTRING("Resources"));
-#endif
-
-    mAppData->xreDirectory = greDir;
-  }
-
-  if (!mAppData->directory) {
-    mAppData->directory = mAppData->xreDirectory;
-  }
 
   if (!mAppData->minVersion) {
     Output(true, "Error: Gecko:MinVersion not specified in application.ini\n");
@@ -3747,7 +3721,7 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
 #ifdef LIBFUZZER
   if (PR_GetEnv("LIBFUZZER")) {
     *aExitFlag = true;
-    return mozilla::libFuzzerRunner->Run();
+    return mozilla::libFuzzerRunner->Run(&gArgc, &gArgv);
   }
 #endif
 
@@ -4525,7 +4499,7 @@ XRE_CreateStatsObject()
  *            .app/Contents/Resources.
  */
 int
-XREMain::XRE_main(int argc, char* argv[], const XREAppData& aAppData)
+XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
 {
   ScopedLogging log;
 
@@ -4554,7 +4528,27 @@ XREMain::XRE_main(int argc, char* argv[], const XREAppData& aAppData)
   gArgc = argc;
   gArgv = argv;
 
-  mAppData = MakeUnique<XREAppData>(aAppData);
+  if (aConfig.appData) {
+      mAppData = MakeUnique<XREAppData>(*aConfig.appData);
+  } else {
+    MOZ_RELEASE_ASSERT(aConfig.appDataPath);
+    nsCOMPtr<nsIFile> appini;
+    rv = XRE_GetFileFromPath(aConfig.appDataPath, getter_AddRefs(appini));
+    if (NS_FAILED(rv)) {
+      Output(true, "Error: unrecognized path: %s\n", aConfig.appDataPath);
+      return 1;
+    }
+
+    mAppData = MakeUnique<XREAppData>();
+    rv = XRE_ParseAppData(appini, *mAppData);
+    if (NS_FAILED(rv)) {
+      Output(true, "Couldn't read application.ini");
+      return 1;
+    }
+
+    appini->GetParent(getter_AddRefs(mAppData->directory));
+  }
+
   if (!mAppData->remotingName) {
     mAppData->remotingName = mAppData->name;
   }
@@ -4567,6 +4561,40 @@ XREMain::XRE_main(int argc, char* argv[], const XREAppData& aAppData)
 
   rv = binFile->GetPath(gAbsoluteArgv0Path);
   NS_ENSURE_SUCCESS(rv, 1);
+
+  if (!mAppData->xreDirectory) {
+    nsCOMPtr<nsIFile> lf;
+    rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(lf));
+    if (NS_FAILED(rv))
+      return 2;
+
+    nsCOMPtr<nsIFile> greDir;
+    rv = lf->GetParent(getter_AddRefs(greDir));
+    if (NS_FAILED(rv))
+      return 2;
+
+#ifdef XP_MACOSX
+    nsCOMPtr<nsIFile> parent;
+    greDir->GetParent(getter_AddRefs(parent));
+    greDir = parent.forget();
+    greDir->AppendNative(NS_LITERAL_CSTRING("Resources"));
+#endif
+
+    mAppData->xreDirectory = greDir;
+  }
+
+  if (aConfig.appData && aConfig.appDataPath) {
+    mAppData->xreDirectory->Clone(getter_AddRefs(mAppData->directory));
+    mAppData->directory->AppendNative(nsDependentCString(aConfig.appDataPath));
+  }
+
+  if (!mAppData->directory) {
+    mAppData->directory = mAppData->xreDirectory;
+  }
+
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
+  mAppData->sandboxBrokerServices = aConfig.sandboxBrokerServices;
+#endif
 
   mozilla::IOInterposerInit ioInterposerGuard;
 
@@ -4691,11 +4719,11 @@ XRE_StopLateWriteChecks(void) {
 }
 
 int
-XRE_main(int argc, char* argv[], const XREAppData& aAppData, uint32_t aFlags)
+XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig)
 {
   XREMain main;
 
-  int result = main.XRE_main(argc, argv, aAppData);
+  int result = main.XRE_main(argc, argv, aConfig);
   mozilla::RecordShutdownEndTimeStamp();
   return result;
 }
@@ -4821,7 +4849,7 @@ enum {
   kE10sDisabledForAddons = 7,
   kE10sForceDisabled = 8,
   // kE10sDisabledForXPAcceleration = 9, removed in bug 1296353
-  kE10sDisabledForOperatingSystem = 10,
+  // kE10sDisabledForOperatingSystem = 10, removed due to xp-eol
 };
 
 const char* kAccessibilityLastRunDatePref = "accessibility.lastLoadDate";
@@ -4865,7 +4893,7 @@ MultiprocessBlockPolicy() {
 
 #if defined(XP_WIN)
   // These checks are currently only in use under WinXP
-  if (!IsVistaOrLater()) {
+  if (false) { // !IsVistaOrLater()
     bool disabledForA11y = false;
     /**
       * Avoids enabling e10s if accessibility has recently loaded. Performs the
@@ -4899,17 +4927,6 @@ MultiprocessBlockPolicy() {
     }
   }
 #endif
-
-  /**
-   * Avoids enabling e10s for Windows XP users on the release channel.
-   */
-#if defined(XP_WIN)
-  if (Preferences::GetDefaultCString("app.update.channel").EqualsLiteral("release") &&
-      !IsVistaOrLater()) {
-    gMultiprocessBlockPolicy = kE10sDisabledForOperatingSystem;
-    return gMultiprocessBlockPolicy;
-  }
-#endif // XP_WIN
 
   /*
    * None of the blocking policies matched, so e10s is allowed to run.

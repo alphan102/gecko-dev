@@ -54,13 +54,13 @@ RokuApp.prototype = {
       if (callback) {
         callback({ state: "unknown" });
       }
-    }).bind(this), false);
+    }).bind(this));
 
     xhr.addEventListener("error", (function() {
       if (callback) {
         callback({ state: "unknown" });
       }
-    }), false);
+    }));
 
     xhr.send(null);
   },
@@ -91,13 +91,13 @@ RokuApp.prototype = {
       if (callback) {
         callback(xhr.status === 200);
       }
-    }), false);
+    }));
 
     xhr.addEventListener("error", (function() {
       if (callback) {
         callback(false);
       }
-    }), false);
+    }));
 
     xhr.send(null);
   },
@@ -114,13 +114,13 @@ RokuApp.prototype = {
       if (callback) {
         callback(xhr.status === 200);
       }
-    }), false);
+    }));
 
     xhr.addEventListener("error", (function() {
       if (callback) {
         callback(false);
       }
-    }), false);
+    }));
 
     xhr.send(null);
   },
@@ -144,7 +144,7 @@ function RemoteMedia(url, listener) {
   this._listener = listener;
   this._status = "uninitialized";
 
-  let serverURI = Services.io.newURI(this._url, null, null);
+  let serverURI = Services.io.newURI(this._url);
   this._socket = Cc["@mozilla.org/network/socket-transport-service;1"].getService(Ci.nsISocketTransportService).createTransport(null, 0, serverURI.host, 9191, null);
   this._outputStream = this._socket.openOutputStream(0, 0, 0);
 

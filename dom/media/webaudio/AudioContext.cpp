@@ -78,9 +78,15 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(AudioContext)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(AudioContext)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDestination)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mListener)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mPromiseGripArray)
   if (!tmp->mIsStarted) {
     NS_IMPL_CYCLE_COLLECTION_UNLINK(mActiveNodes)
   }
+  // mDecodeJobs owns the WebAudioDecodeJob objects whose lifetime is managed explicitly.
+  // mAllNodes is an array of weak pointers, ignore it here.
+  // mPannerNodes is an array of weak pointers, ignore it here.
+  // mBasicWaveFormCache cannot participate in cycles, ignore it here.
+
   // Remove weak reference on the global window as the context is not usable
   // without mDestination.
   tmp->DisconnectFromWindow();
@@ -90,11 +96,16 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(AudioContext,
                                                   DOMEventTargetHelper)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDestination)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mListener)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPromiseGripArray)
   if (!tmp->mIsStarted) {
     MOZ_ASSERT(tmp->mIsOffline,
                "Online AudioContexts should always be started");
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mActiveNodes)
   }
+  // mDecodeJobs owns the WebAudioDecodeJob objects whose lifetime is managed explicitly.
+  // mAllNodes is an array of weak pointers, ignore it here.
+  // mPannerNodes is an array of weak pointers, ignore it here.
+  // mBasicWaveFormCache cannot participate in cycles, ignore it here.
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_ADDREF_INHERITED(AudioContext, DOMEventTargetHelper)
@@ -286,7 +297,7 @@ AudioContext::CreateBuffer(uint32_t aNumberOfChannels, uint32_t aLength,
     return nullptr;
   }
 
-  return AudioBuffer::Create(this, aNumberOfChannels, aLength,
+  return AudioBuffer::Create(GetOwner(), aNumberOfChannels, aLength,
                              aSampleRate, aRv);
 }
 
@@ -510,6 +521,12 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
     return nullptr;
   }
 
+  if (!aBuffer.Data()) {
+    // Throw if the buffer is detached
+    aRv.ThrowTypeError<MSG_TYPEDARRAY_IS_DETACHED>(NS_LITERAL_STRING("Argument of AudioContext.decodeAudioData"));
+    return nullptr;
+  }
+
   // Detach the array buffer
   size_t length = aBuffer.Length();
   JS::RootedObject obj(cx, aBuffer.Obj());
@@ -529,12 +546,12 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
   if (aSuccessCallback.WasPassed()) {
     successCallback = &aSuccessCallback.Value();
   }
-  RefPtr<WebAudioDecodeJob> job(
+  UniquePtr<WebAudioDecodeJob> job(
     new WebAudioDecodeJob(contentType, this,
                           promise, successCallback, failureCallback));
   AsyncDecodeWebAudio(contentType.get(), data, length, *job);
   // Transfer the ownership to mDecodeJobs
-  mDecodeJobs.AppendElement(job.forget());
+  mDecodeJobs.AppendElement(Move(job));
 
   return promise.forget();
 }
@@ -542,7 +559,14 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
 void
 AudioContext::RemoveFromDecodeQueue(WebAudioDecodeJob* aDecodeJob)
 {
-  mDecodeJobs.RemoveElement(aDecodeJob);
+  // Since UniquePtr doesn't provide an operator== which allows you to compare
+  // against raw pointers, we need to iterate manually.
+  for (uint32_t i = 0; i < mDecodeJobs.Length(); ++i) {
+    if (mDecodeJobs[i].get() == aDecodeJob) {
+      mDecodeJobs.RemoveElementAt(i);
+      break;
+    }
+  }
 }
 
 void
@@ -625,6 +649,12 @@ AudioContext::Shutdown()
     ErrorResult dummy;
     RefPtr<Promise> ignored = Close(dummy);
   }
+
+  for (auto p : mPromiseGripArray) {
+    p->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+  }
+
+  mPromiseGripArray.Clear();
 
   // Release references to active nodes.
   // Active AudioNodes don't unregister in destructors, at which point the
@@ -771,9 +801,15 @@ AudioContext::OnStateChanged(void* aPromise, AudioContextState aNewState)
 
   if (aPromise) {
     Promise* promise = reinterpret_cast<Promise*>(aPromise);
-    promise->MaybeResolveWithUndefined();
-    DebugOnly<bool> rv = mPromiseGripArray.RemoveElement(promise);
-    MOZ_ASSERT(rv, "Promise wasn't in the grip array?");
+    // It is possible for the promise to have been removed from
+    // mPromiseGripArray if the cycle collector has severed our connections. DO
+    // NOT dereference the promise pointer in that case since it may point to
+    // already freed memory.
+    if (mPromiseGripArray.Contains(promise)) {
+      promise->MaybeResolveWithUndefined();
+      DebugOnly<bool> rv = mPromiseGripArray.RemoveElement(promise);
+      MOZ_ASSERT(rv, "Promise wasn't in the grip array?");
+    }
   }
 
   if (mAudioContextState != aNewState) {

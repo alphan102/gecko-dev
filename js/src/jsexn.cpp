@@ -516,14 +516,17 @@ ErrorObject::createProto(JSContext* cx, JSProtoKey key)
 {
     JSExnType type = ExnTypeFromProtoKey(key);
 
-    if (type == JSEXN_ERR)
-        return cx->global()->createBlankPrototype(cx, &ErrorObject::protoClasses[JSEXN_ERR]);
+    if (type == JSEXN_ERR) {
+        return GlobalObject::createBlankPrototype(cx, cx->global(),
+                                                  &ErrorObject::protoClasses[JSEXN_ERR]);
+    }
 
     RootedObject protoProto(cx, GlobalObject::getOrCreateErrorPrototype(cx, cx->global()));
     if (!protoProto)
         return nullptr;
 
-    return cx->global()->createBlankPrototypeInheriting(cx, &ErrorObject::protoClasses[type],
+    return GlobalObject::createBlankPrototypeInheriting(cx, cx->global(),
+                                                        &ErrorObject::protoClasses[type],
                                                         protoProto);
 }
 
@@ -600,7 +603,7 @@ js::ErrorToException(JSContext* cx, JSErrorReport* reportp,
     // Prevent infinite recursion.
     if (cx->generatingError)
         return;
-    AutoScopedAssign<bool> asa(&cx->generatingError, true);
+    AutoScopedAssign<bool> asa(&cx->generatingError.ref(), true);
 
     // Create an exception object.
     RootedString messageStr(cx, reportp->newMessageString(cx));

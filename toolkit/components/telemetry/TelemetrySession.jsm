@@ -47,6 +47,12 @@ const HISTOGRAM_SUFFIXES = {
   GPU: "#gpu",
 }
 
+const INTERNAL_PROCESSES_NAMES = {
+  PARENT: "default",
+  CONTENT: "tab",
+  GPU: "gpu",
+}
+
 const ENVIRONMENT_CHANGE_LISTENER = "TelemetrySession::onEnvironmentChange";
 
 const MS_IN_ONE_HOUR  = 60 * 60 * 1000;
@@ -228,12 +234,12 @@ var processInfo = {
     if (!this._initialized) {
       Cu.import("resource://gre/modules/ctypes.jsm");
       this._IO_COUNTERS = new ctypes.StructType("IO_COUNTERS", [
-        {'readOps': ctypes.unsigned_long_long},
-        {'writeOps': ctypes.unsigned_long_long},
-        {'otherOps': ctypes.unsigned_long_long},
-        {'readBytes': ctypes.unsigned_long_long},
-        {'writeBytes': ctypes.unsigned_long_long},
-        {'otherBytes': ctypes.unsigned_long_long} ]);
+        {"readOps": ctypes.unsigned_long_long},
+        {"writeOps": ctypes.unsigned_long_long},
+        {"otherOps": ctypes.unsigned_long_long},
+        {"readBytes": ctypes.unsigned_long_long},
+        {"writeBytes": ctypes.unsigned_long_long},
+        {"otherBytes": ctypes.unsigned_long_long} ]);
       try {
         this._kernel32 = ctypes.open("Kernel32.dll");
         this._GetProcessIoCounters = this._kernel32.declare("GetProcessIoCounters",
@@ -728,8 +734,6 @@ var Impl = {
    * @return simple measurements as a dictionary.
    */
   getSimpleMeasurements: function getSimpleMeasurements(forSavedSession, isSubsession, clearSubsession) {
-    this._log.trace("getSimpleMeasurements");
-
     let si = Services.startup.getStartupInfo();
 
     // Measurements common to chrome and content processes.
@@ -883,9 +887,6 @@ var Impl = {
   },
 
   getHistograms: function getHistograms(subsession, clearSubsession) {
-    this._log.trace("getHistograms - subsession: " + subsession +
-                    ", clearSubsession: " + clearSubsession);
-
     let registered =
       Telemetry.registeredHistograms(this.getDatasetType(), []);
     if (this._testing == false) {
@@ -913,8 +914,6 @@ var Impl = {
   },
 
   getAddonHistograms: function getAddonHistograms() {
-    this._log.trace("getAddonHistograms");
-
     let ahs = Telemetry.addonHistogramSnapshots;
     let ret = {};
 
@@ -932,9 +931,6 @@ var Impl = {
   },
 
   getKeyedHistograms(subsession, clearSubsession) {
-    this._log.trace("getKeyedHistograms - subsession: " + subsession +
-                    ", clearSubsession: " + clearSubsession);
-
     let registered =
       Telemetry.registeredKeyedHistograms(this.getDatasetType(), []);
     if (this._testing == false) {
@@ -978,12 +974,11 @@ var Impl = {
    * @param {subsession} If true, then we collect the data for a subsession.
    * @param {clearSubsession} If true, we  need to clear the subsession.
    * @param {keyed} Take a snapshot of keyed or non keyed scalars.
-   * @return {Object} The scalar data as a Javascript object.
+   * @return {Object} The scalar data as a Javascript object, including the
+   *         data from child processes, in the following format:
+   *            {'content': { 'scalarName': ... }, 'gpu': { ... } }
    */
   getScalars(subsession, clearSubsession, keyed) {
-    this._log.trace("getScalars - subsession: " + subsession + ", clearSubsession: " +
-                    clearSubsession + ", keyed: " + keyed);
-
     if (!subsession) {
       // We only support scalars for subsessions.
       this._log.trace("getScalars - We only support scalars in subsessions.");
@@ -996,11 +991,16 @@ var Impl = {
 
     // Don't return the test scalars.
     let ret = {};
-    for (let name in scalarsSnapshot) {
-      if (name.startsWith('telemetry.test') && this._testing == false) {
-        this._log.trace("getScalars - Skipping test scalar: " + name);
-      } else {
-        ret[name] = scalarsSnapshot[name];
+    for (let processName in scalarsSnapshot) {
+      for (let name in scalarsSnapshot[processName]) {
+        if (name.startsWith("telemetry.test") && this._testing == false) {
+          continue;
+        }
+        // Finally arrange the data in the returned object.
+        if (!(processName in ret)) {
+          ret[processName] = {};
+        }
+        ret[processName][name] = scalarsSnapshot[processName][name];
       }
     }
 
@@ -1026,8 +1026,6 @@ var Impl = {
   },
 
   getThreadHangStats: function getThreadHangStats(stats) {
-    this._log.trace("getThreadHangStats");
-
     stats.forEach((thread) => {
       thread.activity = this.packHistogram(thread.activity);
       thread.hangs.forEach((hang) => {
@@ -1046,8 +1044,6 @@ var Impl = {
    * @return The metadata as a JS object
    */
   getMetadata: function getMetadata(reason) {
-    this._log.trace("getMetadata - Reason " + reason);
-
     const sessionStartDate = Utils.toLocalTimeISOString(Utils.truncateToDays(this._sessionStartDate));
     const subsessionStartDate = Utils.toLocalTimeISOString(Utils.truncateToDays(this._subsessionStartDate));
     const monotonicNow = Policy.monotonicNow();
@@ -1098,11 +1094,8 @@ var Impl = {
    */
   gatherMemory: function gatherMemory() {
     if (!Telemetry.canRecordExtended) {
-      this._log.trace("gatherMemory - Extended data recording disabled, skipping.");
       return;
     }
-
-    this._log.trace("gatherMemory");
 
     let mgr;
     try {
@@ -1287,15 +1280,20 @@ var Impl = {
     // Additional payload for chrome process.
     let histograms = protect(() => this.getHistograms(isSubsession, clearSubsession), {});
     let keyedHistograms = protect(() => this.getKeyedHistograms(isSubsession, clearSubsession), {});
+    let scalars = protect(() => this.getScalars(isSubsession, clearSubsession), {});
+    let keyedScalars = protect(() => this.getScalars(isSubsession, clearSubsession, true), {});
+
     payloadObj.histograms = histograms[HISTOGRAM_SUFFIXES.PARENT] || {};
     payloadObj.keyedHistograms = keyedHistograms[HISTOGRAM_SUFFIXES.PARENT] || {};
     payloadObj.processes = {
       parent: {
-        scalars: protect(() => this.getScalars(isSubsession, clearSubsession)),
-        keyedScalars: protect(() => this.getScalars(isSubsession, clearSubsession, true)),
+        scalars: scalars[INTERNAL_PROCESSES_NAMES.PARENT] || {},
+        keyedScalars: keyedScalars[INTERNAL_PROCESSES_NAMES.PARENT] || {},
         events: protect(() => this.getEvents(isSubsession, clearSubsession)),
       },
       content: {
+        scalars: scalars[INTERNAL_PROCESSES_NAMES.CONTENT],
+        keyedScalars: keyedScalars[INTERNAL_PROCESSES_NAMES.CONTENT],
         histograms: histograms[HISTOGRAM_SUFFIXES.CONTENT],
         keyedHistograms: keyedHistograms[HISTOGRAM_SUFFIXES.CONTENT],
       },
@@ -1303,8 +1301,12 @@ var Impl = {
 
     // Only include the GPU process if we've accumulated data for it.
     if (HISTOGRAM_SUFFIXES.GPU in histograms ||
-        HISTOGRAM_SUFFIXES.GPU in keyedHistograms) {
+        HISTOGRAM_SUFFIXES.GPU in keyedHistograms ||
+        INTERNAL_PROCESSES_NAMES.GPU in scalars ||
+        INTERNAL_PROCESSES_NAMES.GPU in keyedScalars) {
       payloadObj.processes.gpu = {
+        scalars: scalars[INTERNAL_PROCESSES_NAMES.GPU],
+        keyedScalars: keyedScalars[INTERNAL_PROCESSES_NAMES.GPU],
         histograms: histograms[HISTOGRAM_SUFFIXES.GPU],
         keyedHistograms: keyedHistograms[HISTOGRAM_SUFFIXES.GPU],
       };
@@ -1587,7 +1589,6 @@ var Impl = {
   },
 
   getFlashVersion: function getFlashVersion() {
-    this._log.trace("getFlashVersion");
     let host = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
     let tags = host.getPluginTags();
 
@@ -1757,8 +1758,7 @@ var Impl = {
   },
 
 
-  testSavePendingPing: function testSaveHistograms() {
-    this._log.trace("testSaveHistograms");
+  testSavePendingPing() {
     let payload = this.getSessionPayload(REASON_SAVED_SESSION, false);
     let options = {
       addClientId: true,
@@ -1782,7 +1782,7 @@ var Impl = {
       this._hasXulWindowVisibleObserver = false;
     }
     if (AppConstants.platform === "android") {
-      Services.obs.removeObserver(this, "application-background", false);
+      Services.obs.removeObserver(this, "application-background");
     }
     GCTelemetry.shutdown();
   },

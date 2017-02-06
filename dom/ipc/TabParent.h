@@ -8,6 +8,7 @@
 #define mozilla_tabs_TabParent_h
 
 #include "js/TypeDecls.h"
+#include "LiveResizeListener.h"
 #include "mozilla/ContentCache.h"
 #include "mozilla/dom/AudioChannelBinding.h"
 #include "mozilla/dom/ipc/IdType.h"
@@ -91,6 +92,7 @@ class TabParent final : public PBrowserParent
                       , public TabContext
                       , public nsAPostRefreshObserver
                       , public nsIWebBrowserPersistable
+                      , public LiveResizeListener
 {
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
 
@@ -368,6 +370,8 @@ public:
 
   void LoadURL(nsIURI* aURI);
 
+  void InitRenderFrame();
+
   // XXX/cjones: it's not clear what we gain by hiding these
   // message-sending functions under a layer of indirection and
   // eating the return values
@@ -452,17 +456,17 @@ public:
                     int32_t aCharCode, int32_t aModifiers,
                     bool aPreventDefault);
 
-  bool SendRealMouseEvent(mozilla::WidgetMouseEvent& event);
+  bool SendRealMouseEvent(mozilla::WidgetMouseEvent& aEvent);
 
   bool SendRealDragEvent(mozilla::WidgetDragEvent& aEvent,
                          uint32_t aDragAction,
                          uint32_t aDropEffect);
 
-  bool SendMouseWheelEvent(mozilla::WidgetWheelEvent& event);
+  bool SendMouseWheelEvent(mozilla::WidgetWheelEvent& aEvent);
 
-  bool SendRealKeyEvent(mozilla::WidgetKeyboardEvent& event);
+  bool SendRealKeyEvent(mozilla::WidgetKeyboardEvent& aEvent);
 
-  bool SendRealTouchEvent(WidgetTouchEvent& event);
+  bool SendRealTouchEvent(WidgetTouchEvent& aEvent);
 
   bool SendHandleTap(TapType aType,
                      const LayoutDevicePoint& aPoint,
@@ -510,9 +514,9 @@ public:
 
   bool HandleQueryContentEvent(mozilla::WidgetQueryContentEvent& aEvent);
 
-  bool SendCompositionEvent(mozilla::WidgetCompositionEvent& event);
+  bool SendCompositionEvent(mozilla::WidgetCompositionEvent& aEvent);
 
-  bool SendSelectionEvent(mozilla::WidgetSelectionEvent& event);
+  bool SendSelectionEvent(mozilla::WidgetSelectionEvent& aEvent);
 
   bool SendPasteTransferable(const IPCDataTransfer& aDataTransfer,
                              const bool& aIsPrivateData,
@@ -590,6 +594,10 @@ public:
                           uint64_t* aLayersId);
 
   mozilla::ipc::IPCResult RecvEnsureLayersConnected() override;
+
+  // LiveResizeListener implementation
+  void LiveResizeStarted() override;
+  void LiveResizeStopped() override;
 
 protected:
   bool ReceiveMessage(const nsString& aMessage,

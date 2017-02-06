@@ -1656,12 +1656,12 @@ AsyncPanZoomController::CanScrollWithWheel(const ParentLayerPoint& aDelta) const
 }
 
 bool
-AsyncPanZoomController::CanScroll(Layer::ScrollDirection aDirection) const
+AsyncPanZoomController::CanScroll(ScrollDirection aDirection) const
 {
   ReentrantMonitorAutoEnter lock(mMonitor);
   switch (aDirection) {
-  case Layer::HORIZONTAL: return mX.CanScroll();
-  case Layer::VERTICAL:   return mY.CanScroll();
+  case ScrollDirection::HORIZONTAL: return mX.CanScroll();
+  case ScrollDirection::VERTICAL:   return mY.CanScroll();
   default:                MOZ_ASSERT(false); return false;
   }
 }
@@ -1974,10 +1974,10 @@ nsEventStatus AsyncPanZoomController::OnPanEnd(const PanGestureInput& aEvent) {
   MOZ_ASSERT(GetCurrentPanGestureBlock());
   RefPtr<const OverscrollHandoffChain> overscrollHandoffChain =
     GetCurrentPanGestureBlock()->GetOverscrollHandoffChain();
-  if (!overscrollHandoffChain->CanScrollInDirection(this, Layer::HORIZONTAL)) {
+  if (!overscrollHandoffChain->CanScrollInDirection(this, ScrollDirection::HORIZONTAL)) {
     mX.SetVelocity(0);
   }
-  if (!overscrollHandoffChain->CanScrollInDirection(this, Layer::VERTICAL)) {
+  if (!overscrollHandoffChain->CanScrollInDirection(this, ScrollDirection::VERTICAL)) {
     mY.SetVelocity(0);
   }
 
@@ -2264,9 +2264,9 @@ void AsyncPanZoomController::HandlePanning(double aAngle) {
   RefPtr<const OverscrollHandoffChain> overscrollHandoffChain =
     GetCurrentInputBlock()->GetOverscrollHandoffChain();
   bool canScrollHorizontal = !mX.IsAxisLocked() &&
-    overscrollHandoffChain->CanScrollInDirection(this, Layer::HORIZONTAL);
+    overscrollHandoffChain->CanScrollInDirection(this, ScrollDirection::HORIZONTAL);
   bool canScrollVertical = !mY.IsAxisLocked() &&
-    overscrollHandoffChain->CanScrollInDirection(this, Layer::VERTICAL);
+    overscrollHandoffChain->CanScrollInDirection(this, ScrollDirection::VERTICAL);
 
   if (!canScrollHorizontal || !canScrollVertical) {
     SetState(PANNING);
@@ -2626,7 +2626,12 @@ void AsyncPanZoomController::StartAnimation(AsyncPanZoomAnimation* aAnimation)
 
 void AsyncPanZoomController::CancelAnimation(CancelAnimationFlags aFlags) {
   ReentrantMonitorAutoEnter lock(mMonitor);
-  APZC_LOG("%p running CancelAnimation in state %d\n", this, mState);
+  APZC_LOG("%p running CancelAnimation(0x%x) in state %d\n", this, aFlags, mState);
+
+  if ((aFlags & ExcludeWheel) && mState == WHEEL_SCROLL) {
+    return;
+  }
+
   SetState(NOTHING);
   mAnimation = nullptr;
   // Since there is no animation in progress now the axes should
@@ -3042,42 +3047,10 @@ AsyncPanZoomController::GetOverscrollTransform(AsyncMode aMode) const
     return AsyncTransformComponentMatrix();
   }
 
-  // The overscroll effect is a uniform stretch along the overscrolled axis,
-  // with the edge of the content where we have reached the end of the
-  // scrollable area pinned into place.
-
-  // The kStretchFactor parameter determines how much overscroll can stretch the
-  // content.
-  const float kStretchFactor = gfxPrefs::APZOverscrollStretchFactor();
-
-  // Compute the amount of the stretch along each axis. The stretch is
-  // proportional to the amount by which we are overscrolled along that axis.
-  ParentLayerSize compositionSize(mX.GetCompositionLength(), mY.GetCompositionLength());
-  float scaleX = 1 + kStretchFactor * fabsf(mX.GetOverscroll()) / mX.GetCompositionLength();
-  float scaleY = 1 + kStretchFactor * fabsf(mY.GetOverscroll()) / mY.GetCompositionLength();
-
-  // The scale is applied relative to the origin of the composition bounds, i.e.
-  // it keeps the top-left corner of the content in place. This is fine if we
-  // are overscrolling at the top or on the left, but if we are overscrolling
-  // at the bottom or on the right, we want the bottom or right edge of the
-  // content to stay in place instead, so we add a translation to compensate.
-  ParentLayerPoint translation;
-  bool overscrolledOnRight = mX.GetOverscroll() > 0;
-  if (overscrolledOnRight) {
-    ParentLayerCoord overscrolledCompositionWidth = scaleX * compositionSize.width;
-    ParentLayerCoord extraCompositionWidth = overscrolledCompositionWidth - compositionSize.width;
-    translation.x = -extraCompositionWidth;
-  }
-  bool overscrolledAtBottom = mY.GetOverscroll() > 0;
-  if (overscrolledAtBottom) {
-    ParentLayerCoord overscrolledCompositionHeight = scaleY * compositionSize.height;
-    ParentLayerCoord extraCompositionHeight = overscrolledCompositionHeight - compositionSize.height;
-    translation.y = -extraCompositionHeight;
-  }
-
-  // Combine the transformations into a matrix.
-  return AsyncTransformComponentMatrix::Scaling(scaleX, scaleY, 1)
-                    .PostTranslate(translation.x, translation.y, 0);
+  // The overscroll effect is a simple translation by the overscroll offset.
+  ParentLayerPoint overscrollOffset(-mX.GetOverscroll(), -mY.GetOverscroll());
+  return AsyncTransformComponentMatrix()
+      .PostTranslate(overscrollOffset.x, overscrollOffset.y, 0);
 }
 
 bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime)

@@ -9,14 +9,15 @@ const {utils: Cu} = Components;
 Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/TelemetryController.jsm");
 Cu.import("resource://gre/modules/Timer.jsm"); /* globals setTimeout, clearTimeout */
-Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("resource://shield-recipe-client/lib/CleanupManager.jsm");
+Cu.import("resource://shield-recipe-client/lib/EventEmitter.jsm");
+Cu.import("resource://shield-recipe-client/lib/LogManager.jsm");
 
 Cu.importGlobalProperties(["URL"]); /* globals URL */
 
 this.EXPORTED_SYMBOLS = ["Heartbeat"];
 
-const log = Log.repository.getLogger("shield-recipe-client");
+const log = LogManager.getLogger("heartbeat");
 const PREF_SURVEY_DURATION = "browser.uitour.surveyDuration";
 const NOTIFICATION_TIME = 3000;
 
@@ -25,8 +26,6 @@ const NOTIFICATION_TIME = 3000;
  *
  * @param chromeWindow
  *        The chrome window that the heartbeat notification is displayed in.
- * @param eventEmitter
- *        An EventEmitter instance to report status to.
  * @param sandboxManager
  *        The manager for the sandbox this was called from. Heartbeat will
  *        increment the hold counter on the manager.
@@ -56,7 +55,7 @@ const NOTIFICATION_TIME = 3000;
  *        The url to visit after the user answers the question.
  */
 this.Heartbeat = class {
-  constructor(chromeWindow, eventEmitter, sandboxManager, options) {
+  constructor(chromeWindow, sandboxManager, options) {
     if (typeof options.flowId !== "string") {
       throw new Error("flowId must be a string");
     }
@@ -92,7 +91,7 @@ this.Heartbeat = class {
     }
 
     this.chromeWindow = chromeWindow;
-    this.eventEmitter = eventEmitter;
+    this.eventEmitter = new EventEmitter(sandboxManager);
     this.sandboxManager = sandboxManager;
     this.options = options;
     this.surveyResults = {};
@@ -100,6 +99,7 @@ this.Heartbeat = class {
 
     // so event handlers are consistent
     this.handleWindowClosed = this.handleWindowClosed.bind(this);
+    this.close = this.close.bind(this);
 
     if (this.options.engagementButtonLabel) {
       this.buttons = [{
@@ -208,7 +208,7 @@ this.Heartbeat = class {
     }, surveyDuration);
 
     this.sandboxManager.addHold("heartbeat");
-    CleanupManager.addCleanupHandler(() => this.close());
+    CleanupManager.addCleanupHandler(this.close);
   }
 
   maybeNotifyHeartbeat(name, data = {}) {
@@ -260,7 +260,7 @@ this.Heartbeat = class {
 
     data.timestamp = timestamp;
     data.flowId = this.options.flowId;
-    this.eventEmitter.emit(name, Cu.cloneInto(data, this.sandboxManager.sandbox));
+    this.eventEmitter.emit(name, data);
 
     if (sendPing) {
       // Send the ping to Telemetry
@@ -278,13 +278,10 @@ this.Heartbeat = class {
       });
 
       // only for testing
-      this.eventEmitter.emit("TelemetrySent", Cu.cloneInto(payload, this.sandboxManager.sandbox));
+      this.eventEmitter.emit("TelemetrySent", payload);
 
       // Survey is complete, clear out the expiry timer & survey configuration
-      if (this.surveyEndTimer) {
-        clearTimeout(this.surveyEndTimer);
-        this.surveyEndTimer = null;
-      }
+      this.endTimerIfPresent("surveyEndTimer");
 
       this.pingSent = true;
       this.surveyResults = null;
@@ -315,12 +312,16 @@ this.Heartbeat = class {
       this.chromeWindow.gBrowser.selectedTab = this.chromeWindow.gBrowser.addTab(this.options.postAnswerUrl.toString());
     }
 
-    if (this.surveyEndTimer) {
-      clearTimeout(this.surveyEndTimer);
-      this.surveyEndTimer = null;
-    }
+    this.endTimerIfPresent("surveyEndTimer");
 
-    setTimeout(() => this.close(), NOTIFICATION_TIME);
+    this.engagementCloseTimer = setTimeout(() => this.close(), NOTIFICATION_TIME);
+  }
+
+  endTimerIfPresent(timerName) {
+    if (this[timerName]) {
+      clearTimeout(this[timerName]);
+      this[timerName] = null;
+    }
   }
 
   handleWindowClosed() {
@@ -329,10 +330,13 @@ this.Heartbeat = class {
 
   close() {
     this.notificationBox.removeNotification(this.notice);
-    this.cleanup();
   }
 
   cleanup() {
+    // Kill the timers which might call things after we've cleaned up:
+    this.endTimerIfPresent("surveyEndTimer");
+    this.endTimerIfPresent("engagementCloseTimer");
+
     this.sandboxManager.removeHold("heartbeat");
     // remove listeners
     this.chromeWindow.removeEventListener("SSWindowClosing", this.handleWindowClosed);
@@ -340,7 +344,10 @@ this.Heartbeat = class {
     this.chromeWindow = null;
     this.notificationBox = null;
     this.notification = null;
+    this.notice = null;
     this.eventEmitter = null;
     this.sandboxManager = null;
+    // Ensure we don't re-enter and release the CleanupManager's reference to us:
+    CleanupManager.removeCleanupHandler(this.close);
   }
 };

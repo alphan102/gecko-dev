@@ -105,9 +105,6 @@ module.exports = {
     // No using !! where casting to boolean is already happening
     "no-extra-boolean-cast": "error",
 
-    // Disallow unnecessary labels
-    "no-extra-label": "error",
-
     // No double semicolon
     "no-extra-semi": "error",
 
@@ -172,7 +169,7 @@ module.exports = {
     "no-trailing-spaces": "error",
 
     // No using undeclared variables
-    // "no-undef": "error",
+    "no-undef": "error",
 
     // Error on newline where a semicolon is needed
     "no-unexpected-multiline": "error",
@@ -182,12 +179,6 @@ module.exports = {
 
     // Disallow control flow statements in finally blocks
     "no-unsafe-finally": "error",
-
-    // Disallow negating the left operand of relational operators
-    "no-unsafe-negation": "error",
-
-    // Disallow unused labels
-    "no-unused-labels": "error",
 
     // No declaring variables that are never used
     "no-unused-vars": ["error", {
@@ -210,6 +201,10 @@ module.exports = {
 
     // Require object-literal shorthand with ES6 method syntax
     "object-shorthand": ["error", "always", { "avoidQuotes": true }],
+
+    // Require double-quotes everywhere, except where quotes are escaped
+    // or template literals are used.
+    "quotes": ["error", "double", { "avoidEscape": true, "allowTemplateLiterals": true }],
 
     // No spacing inside rest or spread expressions
     "rest-spread-spacing": "error",
@@ -258,7 +253,14 @@ module.exports = {
     "dump": true,
     "KeyEvent": false,
     "openDialog": false,
+    "MenuBoxObject": false,
     "sizeToContent": false,
     "SharedArrayBuffer": false,
+    // Note: StopIteration will likely be removed as part of removing legacy
+    // generators, see bug 968038.
+    "StopIteration": false,
+    // Specific to Firefox
+    // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/uneval
+    "uneval": false
   }
 };

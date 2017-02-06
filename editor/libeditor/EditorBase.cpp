@@ -927,7 +927,14 @@ EditorBase::BeginPlaceHolderTransaction(nsIAtom* aName)
     if (selection) {
       mSelState = new SelectionState();
       mSelState->SaveSelection(selection);
-      mRangeUpdater.RegisterSelectionState(*mSelState);
+      // Composition transaction can modify multiple nodes and it merges text
+      // node for ime into single text node.
+      // So if current selection is into IME text node, it might be failed
+      // to restore selection by UndoTransaction.
+      // So we need update selection by range updater.
+      if (mPlaceHolderName == nsGkAtoms::IMETxnName) {
+        mRangeUpdater.RegisterSelectionState(*mSelState);
+      }
     }
   }
   mPlaceHolderBatch++;
@@ -979,7 +986,9 @@ EditorBase::EndPlaceHolderTransaction()
     if (mSelState) {
       // we saved the selection state, but never got to hand it to placeholder
       // (else we ould have nulled out this pointer), so destroy it to prevent leaks.
-      mRangeUpdater.DropSelectionState(*mSelState);
+      if (mPlaceHolderName == nsGkAtoms::IMETxnName) {
+        mRangeUpdater.DropSelectionState(*mSelState);
+      }
       delete mSelState;
       mSelState = nullptr;
     }
@@ -2286,7 +2295,7 @@ EditorBase::CloneAttributes(Element* aDest,
   }
 }
 
-NS_IMETHODIMP
+nsresult
 EditorBase::ScrollSelectionIntoView(bool aScrollToAnchor)
 {
   nsCOMPtr<nsISelectionController> selCon;
@@ -2568,7 +2577,7 @@ EditorBase::GetFirstEditableNode(nsINode* aRoot)
   return (node != aRoot) ? node : nullptr;
 }
 
-NS_IMETHODIMP
+nsresult
 EditorBase::NotifyDocumentListeners(
               TDocumentListenerNotification aNotificationType)
 {
@@ -2909,15 +2918,13 @@ EditorBase::JoinNodesImpl(nsINode* aNodeToKeep,
 
   // OK, ready to do join now.
   // If it's a text node, just shuffle around some text.
-  nsCOMPtr<nsIDOMCharacterData> keepNodeAsText( do_QueryInterface(aNodeToKeep) );
-  nsCOMPtr<nsIDOMCharacterData> joinNodeAsText( do_QueryInterface(aNodeToJoin) );
-  if (keepNodeAsText && joinNodeAsText) {
+  if (IsTextNode(aNodeToKeep) && IsTextNode(aNodeToJoin)) {
     nsAutoString rightText;
     nsAutoString leftText;
-    keepNodeAsText->GetData(rightText);
-    joinNodeAsText->GetData(leftText);
+    aNodeToKeep->GetAsText()->GetData(rightText);
+    aNodeToJoin->GetAsText()->GetData(leftText);
     leftText += rightText;
-    keepNodeAsText->SetData(leftText);
+    aNodeToKeep->GetAsText()->SetData(leftText);
   } else {
     // Otherwise it's an interior node, so shuffle around the children.
     nsCOMPtr<nsINodeList> childNodes = aNodeToJoin->ChildNodes();
@@ -4267,34 +4274,22 @@ EditorBase::CreateTxnForComposition(const nsAString& aStringToInsert)
   return transaction.forget();
 }
 
-NS_IMETHODIMP
-EditorBase::CreateTxnForAddStyleSheet(StyleSheet* aSheet,
-                                      AddStyleSheetTransaction** aTransaction)
+already_AddRefed<AddStyleSheetTransaction>
+EditorBase::CreateTxnForAddStyleSheet(StyleSheet* aSheet)
 {
-  RefPtr<AddStyleSheetTransaction> transaction = new AddStyleSheetTransaction();
+  RefPtr<AddStyleSheetTransaction> transaction =
+    new AddStyleSheetTransaction(*this, aSheet);
 
-  nsresult rv = transaction->Init(this, aSheet);
-  if (NS_SUCCEEDED(rv)) {
-    transaction.forget(aTransaction);
-  }
-
-  return rv;
+  return transaction.forget();
 }
 
-NS_IMETHODIMP
-EditorBase::CreateTxnForRemoveStyleSheet(
-              StyleSheet* aSheet,
-              RemoveStyleSheetTransaction** aTransaction)
+already_AddRefed<RemoveStyleSheetTransaction>
+EditorBase::CreateTxnForRemoveStyleSheet(StyleSheet* aSheet)
 {
   RefPtr<RemoveStyleSheetTransaction> transaction =
-    new RemoveStyleSheetTransaction();
+    new RemoveStyleSheetTransaction(*this, aSheet);
 
-  nsresult rv = transaction->Init(this, aSheet);
-  if (NS_SUCCEEDED(rv)) {
-    transaction.forget(aTransaction);
-  }
-
-  return rv;
+  return transaction.forget();
 }
 
 nsresult
@@ -5075,19 +5070,16 @@ EditorBase::IsActiveInDOMWindow()
 }
 
 bool
-EditorBase::IsAcceptableInputEvent(nsIDOMEvent* aEvent)
+EditorBase::IsAcceptableInputEvent(WidgetGUIEvent* aGUIEvent)
 {
   // If the event is trusted, the event should always cause input.
-  NS_ENSURE_TRUE(aEvent, false);
-
-  WidgetEvent* widgetEvent = aEvent->WidgetEventPtr();
-  if (NS_WARN_IF(!widgetEvent)) {
+  if (NS_WARN_IF(!aGUIEvent)) {
     return false;
   }
 
   // If this is dispatched by using cordinates but this editor doesn't have
   // focus, we shouldn't handle it.
-  if (widgetEvent->IsUsingCoordinates()) {
+  if (aGUIEvent->IsUsingCoordinates()) {
     nsCOMPtr<nsIContent> focusedContent = GetFocusedContent();
     if (!focusedContent) {
       return false;
@@ -5100,8 +5092,7 @@ EditorBase::IsAcceptableInputEvent(nsIDOMEvent* aEvent)
   // Note that if we allow to handle such events, editor may be confused by
   // strange event order.
   bool needsWidget = false;
-  WidgetGUIEvent* widgetGUIEvent = nullptr;
-  switch (widgetEvent->mMessage) {
+  switch (aGUIEvent->mMessage) {
     case eUnidentifiedEvent:
       // If events are not created with proper event interface, their message
       // are initialized with eUnidentifiedEvent.  Let's ignore such event.
@@ -5113,25 +5104,26 @@ EditorBase::IsAcceptableInputEvent(nsIDOMEvent* aEvent)
     case eCompositionCommitAsIs:
       // Don't allow composition events whose internal event are not
       // WidgetCompositionEvent.
-      widgetGUIEvent = aEvent->WidgetEventPtr()->AsCompositionEvent();
+      if (!aGUIEvent->AsCompositionEvent()) {
+        return false;
+      }
       needsWidget = true;
       break;
     default:
       break;
   }
-  if (needsWidget &&
-      (!widgetGUIEvent || !widgetGUIEvent->mWidget)) {
+  if (needsWidget && !aGUIEvent->mWidget) {
     return false;
   }
 
   // Accept all trusted events.
-  if (widgetEvent->IsTrusted()) {
+  if (aGUIEvent->IsTrusted()) {
     return true;
   }
 
   // Ignore untrusted mouse event.
   // XXX Why are we handling other untrusted input events?
-  if (widgetEvent->AsMouseEventBase()) {
+  if (aGUIEvent->AsMouseEventBase()) {
     return false;
   }
 

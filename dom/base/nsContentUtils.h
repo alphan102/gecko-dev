@@ -503,6 +503,9 @@ public:
   // aWindow can be either outer or inner window.
   static bool CanCallerAccess(nsPIDOMWindowInner* aWindow);
 
+  // Check if the JS caller is chrome or an addon with the permission.
+  static bool CallerHasPermission(JSContext* aCx, const nsAString& aPerm);
+
   /**
    * GetDocumentFromCaller gets its document by looking at the last called
    * function and finding the document that the function itself relates to.
@@ -805,24 +808,14 @@ public:
   /**
    * Returns origin attributes of the document.
    **/
-  static mozilla::PrincipalOriginAttributes
+  static mozilla::OriginAttributes
   GetOriginAttributes(nsIDocument* aDoc);
 
   /**
    * Returns origin attributes of the load group.
    **/
-  static mozilla::PrincipalOriginAttributes
+  static mozilla::OriginAttributes
   GetOriginAttributes(nsILoadGroup* aLoadGroup);
-
-  /**
-   * Returns true if this document is in a Private Browsing window.
-   */
-  static bool IsInPrivateBrowsing(nsIDocument* aDoc);
-
-  /**
-   * Returns true if this loadGroup uses Private Browsing.
-   */
-  static bool IsInPrivateBrowsing(nsILoadGroup* aLoadGroup);
 
   /**
    * If aNode is not an element, return true exactly when aContent's binding
@@ -2010,7 +2003,7 @@ public:
    * a mouse-click or key press), unless this check has been disabled by
    * setting the pref "full-screen-api.allow-trusted-requests-only" to false.
    */
-  static bool IsRequestFullScreenAllowed();
+  static bool IsRequestFullScreenAllowed(mozilla::dom::CallerType aCallerType);
 
   /**
    * Returns true if calling execCommand with 'cut' or 'copy' arguments
@@ -2023,10 +2016,10 @@ public:
 
   /**
    * Returns true if calling execCommand with 'cut' or 'copy' arguments is
-   * allowed in the current context. These are only allowed if the user initiated
-   * them (like with a mouse-click or key press).
+   * allowed for the given subject principal. These are only allowed if the user
+   * initiated them (like with a mouse-click or key press).
    */
-  static bool IsCutCopyAllowed();
+  static bool IsCutCopyAllowed(nsIPrincipal* aSubjectPrincipal);
 
   /*
    * Returns true if the performance timing APIs are enabled.
@@ -2742,6 +2735,21 @@ public:
   static void AppendDocumentLevelNativeAnonymousContentTo(
       nsIDocument* aDocument,
       nsTArray<nsIContent*>& aElements);
+
+  /**
+   * Returns the content policy type that should be used for loading images
+   * for displaying in the UI.  The sources of such images can be <xul:image>,
+   * <xul:menuitem> on OSX where we load the image through nsMenuItemIconX, etc.
+   */
+  static void
+  GetContentPolicyTypeForUIImageLoading(nsIContent* aLoadingNode,
+                                        nsIPrincipal** aLoadingPrincipal,
+                                        nsContentPolicyType& aContentPolicyType);
+
+  static nsresult
+  CreateJSValueFromSequenceOfObject(JSContext* aCx,
+                                    const mozilla::dom::Sequence<JSObject*>& aTransfer,
+                                    JS::MutableHandle<JS::Value> aValue);
 
 private:
   static bool InitializeEventTable();

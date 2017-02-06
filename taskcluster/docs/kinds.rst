@@ -32,7 +32,23 @@ hazardous behaviors.
 l10n
 ----
 
-TBD (Callek)
+The l10n kind takes the last published nightly build, and generates localized builds
+from it. You can read more about how to trigger these on the `wiki
+<https://wiki.mozilla.org/ReleaseEngineering/TryServer#Desktop_l10n_jobs_.28on_Taskcluster.29>`_.
+
+nightly-l10n
+------------
+
+The nightly l10n kind repacks a specific nightly build (from the same source code)
+in order to provide localized versions of the same source.
+
+nightly-l10n-signing
+--------------------
+
+The nightly l10n signing kind takes artifacts from the nightly-l10n kind and
+passes them to signing servers to have their contents signed appropriately, based
+on an appropriate signing format. One signing job is created for each nightly-l10n
+job (usually chunked).
 
 source-check
 ------------
@@ -143,3 +159,32 @@ Template <yaml-templates>`.
 
 android-stuff
 --------------
+
+balrog
+------
+
+Balrog is the Mozilla Update Server. Jobs of this kind are submitting information
+which assists in telling Firefox that an update is available for the related job.
+
+balrog-l10n
+-----------
+
+Balrog is the Mozilla Update Server. Jobs of this kind are submitting information
+which assists in telling Firefox that an update is available for the localized
+job involved.
+
+beetmover
+---------
+
+Beetmover, takes specific artifacts, "Beets", and pushes them to a location outside
+of Taskcluster's task artifacts, (archive.mozilla.org as one place) and in the
+process determines the final location and a "pretty" name (versioned product name)
+
+beetmover-l10n
+--------------
+
+Beetmover L10n, takes specific artifacts, "Beets", and pushes them to a location outside
+of Taskcluster's task artifacts, (archive.mozilla.org as one place) and in the
+process determines the final location and a "pretty" name (versioned product name)
+This separate kind uses logic specific to localized artifacts, such as including
+the language in the final artifact names.

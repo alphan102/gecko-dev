@@ -33,6 +33,7 @@
 #include "irregexp/NativeRegExpMacroAssembler.h"
 #include "irregexp/RegExpCharacters.h"
 #include "irregexp/RegExpMacroAssembler.h"
+#include "jit/ExecutableAllocator.h"
 #include "jit/JitCommon.h"
 
 #include "irregexp/RegExpCharacters-inl.h"
@@ -1777,13 +1778,17 @@ irregexp::CompilePattern(JSContext* cx, RegExpShared* shared, RegExpCompileData*
     Maybe<InterpretedRegExpMacroAssembler> interpreted_assembler;
 
     RegExpMacroAssembler* assembler;
-    if (IsNativeRegExpEnabled(cx) && !force_bytecode) {
+    if (IsNativeRegExpEnabled(cx) &&
+        !force_bytecode &&
+        jit::CanLikelyAllocateMoreExecutableMemory() &&
+        shared->getSource()->length() < 32 * 1024)
+    {
         NativeRegExpMacroAssembler::Mode mode =
             is_ascii ? NativeRegExpMacroAssembler::ASCII
                      : NativeRegExpMacroAssembler::CHAR16;
 
         ctx.emplace(cx, (jit::TempAllocator*) nullptr);
-        native_assembler.emplace(&alloc, shared, cx->runtime(), mode, (data->capture_count + 1) * 2);
+        native_assembler.emplace(cx, &alloc, shared, mode, (data->capture_count + 1) * 2);
         assembler = native_assembler.ptr();
     } else {
         interpreted_assembler.emplace(&alloc, shared, (data->capture_count + 1) * 2);

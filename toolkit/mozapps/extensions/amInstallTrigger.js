@@ -82,7 +82,7 @@ RemoteMediator.prototype = {
       let element = window.frameElement;
       let ssm = Services.scriptSecurityManager;
       while (element && !ssm.isSystemPrincipal(element.ownerDocument.nodePrincipal))
-        element = element.ownerDocument.defaultView.frameElement;
+        element = element.ownerGlobal.frameElement;
 
       if (element) {
         let listener = Cc["@mozilla.org/addons/integration;1"].
@@ -196,7 +196,7 @@ InstallTrigger.prototype = {
   },
 
   startSoftwareUpdate(url, flags) {
-    let filename = Services.io.newURI(url, null, null)
+    let filename = Services.io.newURI(url)
                               .QueryInterface(Ci.nsIURL)
                               .filename;
     let args = {};

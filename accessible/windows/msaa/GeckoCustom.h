@@ -27,7 +27,10 @@ public:
   DECL_IUNKNOWN
 
   virtual STDMETHODIMP get_anchorCount(long* aCount);
+  virtual STDMETHODIMP get_DOMNodeID(BSTR* aID);
   virtual STDMETHODIMP get_ID(uint64_t* aID);
+  virtual STDMETHODIMP get_minimumIncrement(double* aIncrement);
+  virtual STDMETHODIMP get_mozState(uint64_t* aState);
 
 private:
   GeckoCustom() = delete;

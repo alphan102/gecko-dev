@@ -6,7 +6,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 include LayersSurfaces;
-include protocol PCompositable;
 include protocol PCompositorBridge;
 include protocol PRenderFrame;
 include protocol PTexture;
@@ -50,6 +49,8 @@ using mozilla::layers::BorderColors from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::BorderCorners from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::BorderWidths from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::LayerHandle from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::CompositableHandle from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::SimpleLayerAttributes from "mozilla/layers/LayerAttributes.h";
 
 namespace mozilla {
 namespace layers {
@@ -73,12 +74,12 @@ struct OpCreateRefLayer        { LayerHandle layer; };
 
 struct OpAttachCompositable {
   LayerHandle layer;
-  PCompositable compositable;
+  CompositableHandle compositable;
 };
 
 struct OpAttachAsyncCompositable {
   LayerHandle layer;
-  uint64_t containerID;
+  CompositableHandle compositable;
 };
 
 struct ThebesBufferData {
@@ -232,32 +233,10 @@ struct Animation {
 
 // Change a layer's attributes
 struct CommonLayerAttributes {
-  IntRect layerBounds;
   LayerIntRegion visibleRegion;
   EventRegions eventRegions;
-  TransformMatrix transform;
-  bool transformIsPerspective;
-  float postXScale;
-  float postYScale;
-  uint32_t contentFlags;
-  float opacity;
   bool useClipRect;
   ParentLayerIntRect clipRect;
-  MaybeLayerClip scrolledClip;
-  bool isFixedPosition;
-  uint64_t fixedPositionScrollContainerId;
-  LayerPoint fixedPositionAnchor;
-  int32_t fixedPositionSides;
-  bool isStickyPosition;
-  uint64_t stickyScrollContainerId;
-  LayerRect stickyScrollRangeOuter;
-  LayerRect stickyScrollRangeInner;
-  uint64_t scrollbarTargetContainerId;
-  uint32_t scrollbarDirection;
-  float scrollbarThumbRatio;
-  bool isScrollbarContainer;
-  int8_t mixBlendMode;
-  bool forceIsolatedGroup;
   LayerHandle maskLayer;
   LayerHandle[] ancestorMaskLayers;
   // Animated colors will only honored for ColorLayers.
@@ -330,6 +309,11 @@ struct PluginWindowData {
   bool visible;
 };
 
+struct OpSetSimpleLayerAttributes {
+  LayerHandle layer;
+  SimpleLayerAttributes attrs;
+};
+
 struct OpSetLayerAttributes {
   LayerHandle layer;
   LayerAttributes attrs;
@@ -399,11 +383,6 @@ struct OpUseTiledLayerBuffer {
   SurfaceDescriptorTiles tileLayerDescriptor;
 };
 
-struct OpUseOverlaySource {
-  OverlaySource overlay;
-  IntRect picture;
-};
-
 struct OpPaintTextureRegion {
   ThebesBufferData bufferData;
   nsIntRegion updatedRegion;
@@ -465,11 +444,10 @@ union CompositableOperationDetail {
 
   OpUseTexture;
   OpUseComponentAlphaTextures;
-  OpUseOverlaySource;
 };
 
 struct CompositableOperation {
-  PCompositable compositable;
+  CompositableHandle compositable;
   CompositableOperationDetail detail;
 };
 
@@ -486,7 +464,6 @@ union Edit {
   OpCreateCanvasLayer;
   OpCreateRefLayer;
 
-  OpSetLayerAttributes;
   OpSetDiagnosticTypes;
   OpWindowOverlayChanged;
 
@@ -507,13 +484,13 @@ union Edit {
 // operations for safety.
 union OpDestroy {
   PTexture;
-  PCompositable;
+  CompositableHandle;
 };
 
 // Replies to operations
 
 struct OpContentBufferSwap {
-  PCompositable compositable;
+  CompositableHandle compositable;
   nsIntRegion frontUpdatedRegion;
 };
 
@@ -522,7 +499,7 @@ struct OpContentBufferSwap {
  * image is composited by an ImageHost.
  */
 struct ImageCompositeNotification {
-  uint64_t asyncCompositableID;
+  CompositableHandle compositable;
   TimeStamp imageTimeStamp;
   TimeStamp firstCompositeTimeStamp;
   uint32_t frameID;
@@ -542,6 +519,9 @@ union AsyncParentMessageData {
 struct TransactionInfo
 {
   Edit[] cset;
+  OpSetSimpleLayerAttributes[] setSimpleAttrs;
+  OpSetLayerAttributes[] setAttrs;
+  CompositableOperation[] paints;
   OpDestroy[] toDestroy;
   uint64_t fwdTransactionId;
   uint64_t id;

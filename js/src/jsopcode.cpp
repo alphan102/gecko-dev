@@ -92,7 +92,8 @@ const char * const js::CodeName[] = {
 
 /************************************************************************/
 
-#define COUNTS_LEN 16
+static bool
+DecompileArgumentFromStack(JSContext* cx, int formalIndex, char** res);
 
 size_t
 js::GetVariableBytecodeLength(jsbytecode* pc)
@@ -460,6 +461,34 @@ BytecodeParser::simulateOp(JSOp op, uint32_t offset, uint32_t* offsetStack, uint
             offsetStack[stackDepth] = tmp;
         }
         break;
+
+      case JSOP_PICK: {
+        jsbytecode* pc = script_->offsetToPC(offset);
+        unsigned n = GET_UINT8(pc);
+        MOZ_ASSERT(ndefs == n + 1);
+        if (offsetStack) {
+            uint32_t top = stackDepth + n;
+            uint32_t tmp = offsetStack[stackDepth];
+            for (uint32_t i = stackDepth; i < top; i++)
+                offsetStack[i] = offsetStack[i + 1];
+            offsetStack[top] = tmp;
+        }
+        break;
+      }
+
+      case JSOP_UNPICK: {
+        jsbytecode* pc = script_->offsetToPC(offset);
+        unsigned n = GET_UINT8(pc);
+        MOZ_ASSERT(ndefs == n + 1);
+        if (offsetStack) {
+            uint32_t top = stackDepth + n;
+            uint32_t tmp = offsetStack[top];
+            for (uint32_t i = top; i > stackDepth; i--)
+                offsetStack[i] = offsetStack[i - 1];
+            offsetStack[stackDepth] = tmp;
+        }
+        break;
+      }
     }
     stackDepth += ndefs;
     return stackDepth;
@@ -818,8 +847,7 @@ ToDisassemblySource(JSContext* cx, HandleValue v, JSAutoByteString* bytes)
         return true;
     }
 
-    JSRuntime* rt = cx->runtime();
-    if (rt->isHeapBusy() || !rt->gc.isAllocAllowed()) {
+    if (JS::CurrentThreadIsHeapBusy() || !cx->isAllocAllowed()) {
         char* source = JS_sprintf_append(nullptr, "<value>");
         if (!source) {
             ReportOutOfMemory(cx);
@@ -990,7 +1018,7 @@ js::Disassemble1(JSContext* cx, HandleScript script, jsbytecode* pc,
 
       case JOF_ENVCOORD: {
         RootedValue v(cx,
-            StringValue(EnvironmentCoordinateName(cx->caches.envCoordinateNameCache, script, pc)));
+            StringValue(EnvironmentCoordinateName(cx->caches().envCoordinateNameCache, script, pc)));
         JSAutoByteString bytes;
         if (!ToDisassemblySource(cx, v, &bytes))
             return 0;
@@ -1230,6 +1258,24 @@ ExpressionDecompiler::decompilePC(jsbytecode* pc)
         return write(loadAtom(pc));
       case JSOP_GETARG: {
         unsigned slot = GET_ARGNO(pc);
+
+        // For self-hosted scripts that are called from non-self-hosted code,
+        // decompiling the parameter name in the self-hosted script is
+        // unhelpful. Decompile the argument name instead.
+        if (script->selfHosted()) {
+            char* result;
+            if (!DecompileArgumentFromStack(cx, slot, &result))
+                return false;
+
+            // Note that decompiling the argument in the parent frame might
+            // not succeed.
+            if (result) {
+		bool ok = write(result);
+                js_free(result);
+		return ok;
+            }
+        }
+
         JSAtom* atom = getArg(slot);
         if (!atom)
             return false;
@@ -1241,7 +1287,7 @@ ExpressionDecompiler::decompilePC(jsbytecode* pc)
         return write(atom);
       }
       case JSOP_GETALIASEDVAR: {
-        JSAtom* atom = EnvironmentCoordinateName(cx->caches.envCoordinateNameCache, script, pc);
+        JSAtom* atom = EnvironmentCoordinateName(cx->caches().envCoordinateNameCache, script, pc);
         MOZ_ASSERT(atom);
         return write(atom);
       }
@@ -1570,12 +1616,17 @@ DecompileArgumentFromStack(JSContext* cx, int formalIndex, char** res)
     MOZ_ASSERT(frameIter.script()->selfHosted());
 
     /*
-     * Get the second-to-top frame, the caller of the builtin that called the
-     * intrinsic.
+     * Get the second-to-top frame, the non-self-hosted caller of the builtin
+     * that called the intrinsic.
      */
     ++frameIter;
-    if (frameIter.done() || !frameIter.hasScript() || frameIter.compartment() != cx->compartment())
+    if (frameIter.done() ||
+        !frameIter.hasScript() ||
+        frameIter.script()->selfHosted() ||
+        frameIter.compartment() != cx->compartment())
+    {
         return true;
+    }
 
     RootedScript script(cx, frameIter.script());
     jsbytecode* current = frameIter.pc();
@@ -1704,10 +1755,10 @@ static void
 ReleaseScriptCounts(FreeOp* fop)
 {
     JSRuntime* rt = fop->runtime();
-    MOZ_ASSERT(rt->scriptAndCountsVector);
+    MOZ_ASSERT(rt->zoneGroupFromMainThread()->scriptAndCountsVector);
 
-    fop->delete_(rt->scriptAndCountsVector);
-    rt->scriptAndCountsVector = nullptr;
+    fop->delete_(rt->zoneGroupFromMainThread()->scriptAndCountsVector.ref());
+    rt->zoneGroupFromMainThread()->scriptAndCountsVector = nullptr;
 }
 
 JS_FRIEND_API(void)
@@ -1715,15 +1766,15 @@ js::StartPCCountProfiling(JSContext* cx)
 {
     JSRuntime* rt = cx->runtime();
 
-    if (rt->profilingScripts)
+    if (rt->zoneGroupFromMainThread()->profilingScripts)
         return;
 
-    if (rt->scriptAndCountsVector)
+    if (rt->zoneGroupFromMainThread()->scriptAndCountsVector)
         ReleaseScriptCounts(rt->defaultFreeOp());
 
     ReleaseAllJITCode(rt->defaultFreeOp());
 
-    rt->profilingScripts = true;
+    rt->zoneGroupFromMainThread()->profilingScripts = true;
 }
 
 JS_FRIEND_API(void)
@@ -1731,9 +1782,9 @@ js::StopPCCountProfiling(JSContext* cx)
 {
     JSRuntime* rt = cx->runtime();
 
-    if (!rt->profilingScripts)
+    if (!rt->zoneGroupFromMainThread()->profilingScripts)
         return;
-    MOZ_ASSERT(!rt->scriptAndCountsVector);
+    MOZ_ASSERT(!rt->zoneGroupFromMainThread()->scriptAndCountsVector);
 
     ReleaseAllJITCode(rt->defaultFreeOp());
 
@@ -1751,8 +1802,8 @@ js::StopPCCountProfiling(JSContext* cx)
         }
     }
 
-    rt->profilingScripts = false;
-    rt->scriptAndCountsVector = vec;
+    rt->zoneGroupFromMainThread()->profilingScripts = false;
+    rt->zoneGroupFromMainThread()->scriptAndCountsVector = vec;
 }
 
 JS_FRIEND_API(void)
@@ -1760,9 +1811,9 @@ js::PurgePCCounts(JSContext* cx)
 {
     JSRuntime* rt = cx->runtime();
 
-    if (!rt->scriptAndCountsVector)
+    if (!rt->zoneGroupFromMainThread()->scriptAndCountsVector)
         return;
-    MOZ_ASSERT(!rt->profilingScripts);
+    MOZ_ASSERT(!rt->zoneGroupFromMainThread()->profilingScripts);
 
     ReleaseScriptCounts(rt->defaultFreeOp());
 }
@@ -1772,10 +1823,10 @@ js::GetPCCountScriptCount(JSContext* cx)
 {
     JSRuntime* rt = cx->runtime();
 
-    if (!rt->scriptAndCountsVector)
+    if (!rt->zoneGroupFromMainThread()->scriptAndCountsVector)
         return 0;
 
-    return rt->scriptAndCountsVector->length();
+    return rt->zoneGroupFromMainThread()->scriptAndCountsVector->length();
 }
 
 enum MaybeComma {NO_COMMA, COMMA};
@@ -1796,12 +1847,14 @@ js::GetPCCountScriptSummary(JSContext* cx, size_t index)
 {
     JSRuntime* rt = cx->runtime();
 
-    if (!rt->scriptAndCountsVector || index >= rt->scriptAndCountsVector->length()) {
+    if (!rt->zoneGroupFromMainThread()->scriptAndCountsVector ||
+        index >= rt->zoneGroupFromMainThread()->scriptAndCountsVector->length())
+    {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_BUFFER_TOO_SMALL);
         return nullptr;
     }
 
-    const ScriptAndCounts& sac = (*rt->scriptAndCountsVector)[index];
+    const ScriptAndCounts& sac = (*rt->zoneGroupFromMainThread()->scriptAndCountsVector)[index];
     RootedScript script(cx, sac.script);
 
     /*
@@ -2080,12 +2133,14 @@ js::GetPCCountScriptContents(JSContext* cx, size_t index)
 {
     JSRuntime* rt = cx->runtime();
 
-    if (!rt->scriptAndCountsVector || index >= rt->scriptAndCountsVector->length()) {
+    if (!rt->zoneGroupFromMainThread()->scriptAndCountsVector ||
+        index >= rt->zoneGroupFromMainThread()->scriptAndCountsVector->length())
+    {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_BUFFER_TOO_SMALL);
         return nullptr;
     }
 
-    const ScriptAndCounts& sac = (*rt->scriptAndCountsVector)[index];
+    const ScriptAndCounts& sac = (*rt->zoneGroupFromMainThread()->scriptAndCountsVector)[index];
     JSScript* script = sac.script;
 
     StringBuffer buf(cx);

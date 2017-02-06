@@ -1,6 +1,6 @@
 "use strict";
 
-let AutoMigrateBackstage = Cu.import("resource:///modules/AutoMigrate.jsm"); /* globals AutoMigrate */
+Cu.import("resource:///modules/AutoMigrate.jsm", this);
 
 let gShimmedMigratorKeyPicker = null;
 let gShimmedMigrator = null;
@@ -11,6 +11,8 @@ const kUsecPerMin = 60 * 1000000;
 // we get in trouble because the object itself is frozen, and Proxies can't
 // return a different value to an object when directly proxying a frozen
 // object.
+let AutoMigrateBackstage = Cu.import("resource:///modules/AutoMigrate.jsm", {});
+
 AutoMigrateBackstage.MigrationUtils = new Proxy({}, {
   get(target, name) {
     if (name == "getMigratorKeyForDefaultBrowser" && gShimmedMigratorKeyPicker) {
@@ -186,6 +188,7 @@ add_task(function* checkUndoPreconditions() {
  */
 add_task(function* checkUndoRemoval() {
   MigrationUtils.initializeUndoData();
+  Preferences.set("browser.migrate.automigrate.browser", "automationbrowser");
   // Insert a login and check that that worked.
   MigrationUtils.insertLoginWrapper({
     hostname: "www.mozilla.org",
@@ -210,7 +213,7 @@ add_task(function* checkUndoRemoval() {
 
   // Insert 2 history visits
   let now_uSec = Date.now() * 1000;
-  let visitedURI = Services.io.newURI("http://www.example.com/", null, null);
+  let visitedURI = Services.io.newURI("http://www.example.com/");
   let frecencyUpdatePromise = new Promise(resolve => {
     let expectedChanges = 2;
     let observer = {
@@ -254,6 +257,28 @@ add_task(function* checkUndoRemoval() {
   // Verify that we can undo, then undo:
   Assert.ok(AutoMigrate.canUndo(), "Should be possible to undo migration");
   yield AutoMigrate.undo();
+
+  let histograms = [
+    "FX_STARTUP_MIGRATION_UNDO_BOOKMARKS_ERRORCOUNT",
+    "FX_STARTUP_MIGRATION_UNDO_LOGINS_ERRORCOUNT",
+    "FX_STARTUP_MIGRATION_UNDO_VISITS_ERRORCOUNT",
+  ];
+  for (let histogramId of histograms) {
+    let keyedHistogram = Services.telemetry.getKeyedHistogramById(histogramId);
+    let histogramData = keyedHistogram.snapshot().automationbrowser;
+    Assert.equal(histogramData.sum, 0, `Should have reported 0 errors to ${histogramId}.`);
+    Assert.greaterOrEqual(histogramData.counts[0], 1, `Should have reported value of 0 one time to ${histogramId}.`);
+  }
+  histograms = [
+    "FX_STARTUP_MIGRATION_UNDO_BOOKMARKS_MS",
+    "FX_STARTUP_MIGRATION_UNDO_LOGINS_MS",
+    "FX_STARTUP_MIGRATION_UNDO_VISITS_MS",
+    "FX_STARTUP_MIGRATION_UNDO_TOTAL_MS",
+  ];
+  for (let histogramId of histograms) {
+    Assert.greater(Services.telemetry.getKeyedHistogramById(histogramId).snapshot().automationbrowser.sum, 0,
+                   `Should have reported non-zero time spent using undo for ${histogramId}`);
+  }
 
   // Check that the undo removed the history visits:
   visits = PlacesUtils.history.executeQuery(query, opts);
@@ -609,3 +634,28 @@ add_task(function* checkUndoVisitsState() {
   yield PlacesTestUtils.clearHistory();
 });
 
+add_task(function* checkHistoryRemovalCompletion() {
+  AutoMigrate._errorMap = {bookmarks: 0, visits: 0, logins: 0};
+  yield AutoMigrate._removeSomeVisits([{url: "http://www.example.com/", limit: -1}]);
+  ok(true, "Removing visits should complete even if removing some visits failed.");
+  Assert.equal(AutoMigrate._errorMap.visits, 1, "Should have logged the error for visits.");
+
+  // Unfortunately there's not a reliable way to make removing bookmarks be
+  // unhappy unless the DB is messed up (e.g. contains children but has
+  // parents removed already).
+  yield AutoMigrate._removeUnchangedBookmarks([
+    {guid: PlacesUtils.bookmarks, lastModified: new Date(0), parentGuid: 0},
+    {guid: "gobbledygook", lastModified: new Date(0), parentGuid: 0},
+  ]);
+  ok(true, "Removing bookmarks should complete even if some items are gone or bogus.");
+  Assert.equal(AutoMigrate._errorMap.bookmarks, 0,
+               "Should have ignored removing non-existing (or builtin) bookmark.");
+
+
+  yield AutoMigrate._removeUnchangedLogins([
+    {guid: "gobbledygook", timePasswordChanged: new Date(0)},
+  ]);
+  ok(true, "Removing logins should complete even if logins don't exist.");
+  Assert.equal(AutoMigrate._errorMap.logins, 0,
+               "Should have ignored removing non-existing logins.");
+});

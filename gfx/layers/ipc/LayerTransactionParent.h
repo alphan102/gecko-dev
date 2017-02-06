@@ -58,6 +58,8 @@ public:
 
   HostLayerManager* layer_manager() const { return mLayerManager; }
 
+  void SetLayerManager(HostLayerManager* aLayerManager);
+
   uint64_t GetId() const { return mId; }
   Layer* GetRoot() const { return mRoot; }
 
@@ -95,17 +97,13 @@ public:
     return OtherPid();
   }
 
-  void AddPendingCompositorUpdate() {
-    mPendingCompositorUpdates++;
+  void SetPendingCompositorUpdate(uint64_t aNumber) {
+    mPendingCompositorUpdate = Some(aNumber);
   }
-  void SetPendingCompositorUpdates(uint32_t aCount) {
-    // Only called after construction.
-    MOZ_ASSERT(mPendingCompositorUpdates == 0);
-    mPendingCompositorUpdates = aCount;
-  }
-  void AcknowledgeCompositorUpdate() {
-    MOZ_ASSERT(mPendingCompositorUpdates > 0);
-    mPendingCompositorUpdates--;
+  void AcknowledgeCompositorUpdate(uint64_t aNumber) {
+    if (mPendingCompositorUpdate == Some(aNumber)) {
+      mPendingCompositorUpdate = Nothing();
+    }
   }
 
 protected:
@@ -120,7 +118,10 @@ protected:
   virtual mozilla::ipc::IPCResult RecvUpdateNoSwap(const TransactionInfo& aInfo) override;
 
   virtual mozilla::ipc::IPCResult RecvSetLayerObserverEpoch(const uint64_t& aLayerObserverEpoch) override;
+  virtual mozilla::ipc::IPCResult RecvNewCompositable(const CompositableHandle& aHandle,
+                                                      const TextureInfo& aInfo) override;
   virtual mozilla::ipc::IPCResult RecvReleaseLayer(const LayerHandle& aHandle) override;
+  virtual mozilla::ipc::IPCResult RecvReleaseCompositable(const CompositableHandle& aHandle) override;
 
   virtual mozilla::ipc::IPCResult RecvClearCachedResources() override;
   virtual mozilla::ipc::IPCResult RecvForceComposite() override;
@@ -142,8 +143,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetConfirmedTargetAPZC(const uint64_t& aBlockId,
                                                              nsTArray<ScrollableLayerGuid>&& aTargets) override;
 
-  virtual PCompositableParent* AllocPCompositableParent(const TextureInfo& aInfo) override;
-  virtual bool DeallocPCompositableParent(PCompositableParent* actor) override;
+  bool SetLayerAttributes(const OpSetLayerAttributes& aOp);
 
   virtual void ActorDestroy(ActorDestroyReason why) override;
 
@@ -198,9 +198,9 @@ private:
 
   uint64_t mPendingTransaction;
 
-  // Number of compositor updates we're waiting for the child to
-  // acknowledge.
-  uint32_t mPendingCompositorUpdates;
+  // Not accepting layers updates until we receive an acknowledgement with this
+  // generation number.
+  Maybe<uint64_t> mPendingCompositorUpdate;
 
   // When the widget/frame/browser stuff in this process begins its
   // destruction process, we need to Disconnect() all the currently

@@ -15,23 +15,15 @@
 #include "mozilla/RefPtr.h"
 #include <string>
 #include <map>
-#ifndef SPS_STANDALONE
 #include "js/ProfilingFrameIterator.h"
 #include "js/TrackedOptimizationInfo.h"
 #include "nsHashKeys.h"
 #include "nsDataHashtable.h"
-#endif
 #include "mozilla/Maybe.h"
 #include "mozilla/Vector.h"
-#ifndef SPS_STANDALONE
 #include "gtest/MozGtestFriend.h"
-#else
-#define FRIEND_TEST(a, b) // TODO Support standalone gtest
-#endif
 #include "mozilla/HashFunctions.h"
 #include "mozilla/UniquePtr.h"
-
-class ThreadProfile;
 
 // NB: Packing this structure has been shown to cause SIGBUS issues on ARM.
 #ifndef __arm__
@@ -148,13 +140,9 @@ class UniqueStacks
 {
 public:
   struct FrameKey {
-#ifdef SPS_STANDALONE
-    std::string mLocation;
-#else
     // This cannot be a std::string, as it is not memmove compatible, which
     // is used by nsHashTable
     nsCString mLocation;
-#endif
     mozilla::Maybe<unsigned> mLine;
     mozilla::Maybe<unsigned> mCategory;
     mozilla::Maybe<void*> mJITAddress;
@@ -197,19 +185,14 @@ public:
   struct MOZ_STACK_CLASS OnStackFrameKey : public FrameKey {
     explicit OnStackFrameKey(const char* aLocation)
       : FrameKey(aLocation)
-#ifndef SPS_STANDALONE
       , mJITFrameHandle(nullptr)
-#endif
     { }
 
     OnStackFrameKey(const OnStackFrameKey& aToCopy)
       : FrameKey(aToCopy)
-#ifndef SPS_STANDALONE
       , mJITFrameHandle(aToCopy.mJITFrameHandle)
-#endif
     { }
 
-#ifndef SPS_STANDALONE
     const JS::ForEachProfiledFrameOp::FrameHandle* mJITFrameHandle;
 
     OnStackFrameKey(void* aJITAddress, unsigned aJITDepth)
@@ -222,7 +205,6 @@ public:
       : FrameKey(aJITAddress, aJITDepth)
       , mJITFrameHandle(&aJITFrameHandle)
     { }
-#endif
   };
 
   struct StackKey {
@@ -301,19 +283,12 @@ private:
 
   SpliceableChunkedJSONWriter mStackTableWriter;
 
-  // This sucks but this is really performance critical, nsDataHashtable is way faster
-  // than map/unordered_map but nsDataHashtable is tied to xpcom so we ifdef
-  // until we can find a better solution.
-#ifdef SPS_STANDALONE
-  std::map<StackKey, uint32_t> mStackToIndexMap;
-#else
   nsDataHashtable<nsGenericHashKey<StackKey>, uint32_t> mStackToIndexMap;
-#endif
 };
 
 //
-// ThreadProfile JSON Format
-// -------------------------
+// Thread profile JSON Format
+// --------------------------
 //
 // The profile contains much duplicate information. The output JSON of the
 // profile attempts to deduplicate strings, frames, and stack prefixes, to cut
@@ -340,8 +315,7 @@ private:
 //       "responsiveness": 2,  /* number */
 //       "rss": 3,             /* number */
 //       "uss": 4,             /* number */
-//       "frameNumber": 5,     /* number */
-//       "power": 6            /* number */
+//       "frameNumber": 5      /* number */
 //     },
 //     "data":
 //     [

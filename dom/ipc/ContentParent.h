@@ -16,6 +16,7 @@
 #include "mozilla/FileUtils.h"
 #include "mozilla/HalTypes.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/MemoryReportingProcess.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
@@ -38,6 +39,7 @@
 // These must match the similar ones in E10SUtils.jsm.
 #define DEFAULT_REMOTE_TYPE "web"
 #define FILE_REMOTE_TYPE "file"
+#define EXTENSION_REMOTE_TYPE "extension"
 
 // This must start with the DEFAULT_REMOTE_TYPE above.
 #define LARGE_ALLOCATION_REMOTE_TYPE "webLargeAllocation"
@@ -52,7 +54,7 @@ class nsIWidget;
 
 namespace mozilla {
 class PRemoteSpellcheckEngineParent;
-#ifdef MOZ_ENABLE_PROFILER_SPS
+#ifdef MOZ_GECKO_PROFILER
 class ProfileGatherer;
 #endif
 
@@ -60,6 +62,8 @@ class ProfileGatherer;
 class SandboxBroker;
 class SandboxBrokerPolicyFactory;
 #endif
+
+class PreallocatedProcessManagerImpl;
 
 namespace embedding {
 class PrintingParent;
@@ -94,6 +98,7 @@ class MemoryReport;
 class TabContext;
 class ContentBridgeParent;
 class GetFilesHelper;
+class MemoryReportRequestHost;
 
 class ContentParent final : public PContentParent
                           , public nsIContentParent
@@ -103,6 +108,7 @@ class ContentParent final : public PContentParent
                           , public gfx::gfxVarReceiver
                           , public mozilla::LinkedListElement<ContentParent>
                           , public gfx::GPUProcessListener
+                          , public mozilla::MemoryReportingProcess
 {
   typedef mozilla::ipc::GeckoChildProcessHost GeckoChildProcessHost;
   typedef mozilla::ipc::OptionalURIParams OptionalURIParams;
@@ -112,9 +118,16 @@ class ContentParent final : public PContentParent
   typedef mozilla::ipc::PrincipalInfo PrincipalInfo;
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
 
+  friend class mozilla::PreallocatedProcessManagerImpl;
+
 public:
 
   virtual bool IsContentParent() const override { return true; }
+
+  /**
+   * Create a subprocess suitable for use later as a content process.
+   */
+  static already_AddRefed<ContentParent> PreallocateProcess();
 
   /**
    * Start up the content-process machinery.  This might include
@@ -133,6 +146,22 @@ public:
    */
   static void JoinAllSubprocesses();
 
+  static uint32_t GetPoolSize(const nsAString& aContentProcessType);
+
+  static uint32_t GetMaxProcessCount(const nsAString& aContentProcessType);
+
+  static bool IsMaxProcessCountReached(const nsAString& aContentProcessType);
+
+  /**
+   * Picks a random content parent from |aContentParents| with a given |aOpener|
+   * respecting the index limit set by |aMaxContentParents|.
+   * Returns null if non available.
+   */
+  static already_AddRefed<ContentParent>
+  RandomSelect(const nsTArray<ContentParent*>& aContentParents,
+               ContentParent* aOpener,
+               int32_t maxContentParents);
+
   /**
    * Get or create a content process for:
    * 1. browser iframe
@@ -144,7 +173,8 @@ public:
                              hal::ProcessPriority aPriority =
                              hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
                              ContentParent* aOpener = nullptr,
-                             bool aLargeAllocationProcess = false);
+                             bool aLargeAllocationProcess = false,
+                             bool* anew = nullptr);
 
   /**
    * Get or create a content process for the given TabContext.  aFrameElement
@@ -160,6 +190,8 @@ public:
   static void GetAll(nsTArray<ContentParent*>& aArray);
 
   static void GetAllEvenIfDead(nsTArray<ContentParent*>& aArray);
+
+  const nsAString& GetRemoteType() const;
 
   enum CPIteratorPolicy {
     eLive,
@@ -246,15 +278,18 @@ public:
                                                          bool* aIsForBrowser,
                                                          TabId* aTabId) override;
 
-  virtual mozilla::ipc::IPCResult RecvBridgeToChildProcess(const ContentParentId& aCpId) override;
+  virtual mozilla::ipc::IPCResult RecvBridgeToChildProcess(const ContentParentId& aCpId,
+                                                           Endpoint<PContentBridgeParent>* aEndpoint) override;
 
   virtual mozilla::ipc::IPCResult RecvCreateGMPService() override;
 
   virtual mozilla::ipc::IPCResult RecvLoadPlugin(const uint32_t& aPluginId, nsresult* aRv,
-                                                 uint32_t* aRunID) override;
+                                                 uint32_t* aRunID,
+                                                 Endpoint<PPluginModuleParent>* aEndpoint) override;
 
   virtual mozilla::ipc::IPCResult RecvConnectPluginBridge(const uint32_t& aPluginId,
-                                                          nsresult* aRv) override;
+                                                          nsresult* aRv,
+                                                          Endpoint<PPluginModuleParent>* aEndpoint) override;
 
   virtual mozilla::ipc::IPCResult RecvGetBlocklistState(const uint32_t& aPluginId,
                                                         uint32_t* aIsBlocklisted) override;
@@ -319,7 +354,7 @@ public:
 
   bool RequestRunToCompletion();
 
-  bool IsAlive() const;
+  bool IsAlive() const override;
 
   virtual bool IsForBrowser() const override
   {
@@ -434,6 +469,8 @@ public:
                                                             const bool& aIsAudio,
                                                             const bool& aIsVideo) override;
 
+  virtual mozilla::ipc::IPCResult RecvGetGfxInfoFeatureStatus(nsTArray<mozilla::dom::GfxInfoFeatureStatus>* aFS) override;
+
   bool CycleCollectWithLogs(bool aDumpAllTraces,
                             nsICycleCollectorLogSink* aSink,
                             nsIDumpGCAndCCLogsCallback* aCallback);
@@ -500,7 +537,7 @@ public:
                    const bool& aSizeSpecified,
                    const nsCString& aFeatures,
                    const nsCString& aBaseURI,
-                   const DocShellOriginAttributes& aOpenerOriginAttributes,
+                   const OriginAttributes& aOpenerOriginAttributes,
                    const float& aFullZoom,
                    nsresult* aResult,
                    bool* aWindowIsNew,
@@ -518,7 +555,7 @@ public:
     const URIParams& aURIToLoad,
     const nsCString& aFeatures,
     const nsCString& aBaseURI,
-    const DocShellOriginAttributes& aOpenerOriginAttributes,
+    const OriginAttributes& aOpenerOriginAttributes,
     const float& aFullZoom) override;
 
   static bool AllocateLayerTreeId(TabParent* aTabParent, uint64_t* aId);
@@ -613,7 +650,7 @@ private:
                      nsIURI* aURIToLoad,
                      const nsCString& aFeatures,
                      const nsCString& aBaseURI,
-                     const DocShellOriginAttributes& aOpenerOriginAttributes,
+                     const OriginAttributes& aOpenerOriginAttributes,
                      const float& aFullZoom,
                      nsresult& aResult,
                      nsCOMPtr<nsITabParent>& aNewTabParent,
@@ -702,17 +739,12 @@ private:
                                   TabParent* aTopLevel, const TabId& aTabId,
                                   uint64_t* aId);
 
-  PGMPServiceParent*
-  AllocPGMPServiceParent(mozilla::ipc::Transport* aTransport,
-                         base::ProcessId aOtherProcess) override;
+  /**
+   * Get or create the corresponding content parent array to |aContentProcessType|.
+   */
+  static nsTArray<ContentParent*>& GetOrCreatePool(const nsAString& aContentProcessType);
 
-  PBackgroundParent*
-  AllocPBackgroundParent(Transport* aTransport, ProcessId aOtherProcess)
-                         override;
-
-  PProcessHangMonitorParent*
-  AllocPProcessHangMonitorParent(Transport* aTransport,
-                                 ProcessId aOtherProcess) override;
+  virtual mozilla::ipc::IPCResult RecvInitBackground(Endpoint<mozilla::ipc::PBackgroundParent>&& aEndpoint) override;
 
   virtual mozilla::ipc::IPCResult RecvGetProcessAttributes(ContentParentId* aCpId,
                                                            bool* aIsForBrowser) override;
@@ -730,6 +762,10 @@ private:
                                 InfallibleTArray<FontFamilyListEntry>* fontFamilies,
                                 OptionalURIParams* aUserContentSheetURL,
                                 nsTArray<LookAndFeelInt>* aLookAndFeelIntCache) override;
+
+
+  mozilla::ipc::IPCResult RecvAddMemoryReport(const MemoryReport& aReport) override;
+  mozilla::ipc::IPCResult RecvFinishMemoryReport(const uint32_t& aGeneration) override;
 
   virtual bool
   DeallocPJavaScriptParent(mozilla::jsipc::PJavaScriptParent*) override;
@@ -790,15 +826,6 @@ private:
   virtual bool
   DeallocPHeapSnapshotTempFileHelperParent(PHeapSnapshotTempFileHelperParent*) override;
 
-  virtual PMemoryReportRequestParent*
-  AllocPMemoryReportRequestParent(const uint32_t& aGeneration,
-                                  const bool &aAnonymize,
-                                  const bool &aMinimizeMemoryUsage,
-                                  const MaybeFileDesc &aDMDFile) override;
-
-  virtual bool
-  DeallocPMemoryReportRequestParent(PMemoryReportRequestParent* actor) override;
-
   virtual PCycleCollectWithLogsParent*
   AllocPCycleCollectWithLogsParent(const bool& aDumpAllTraces,
                                    const FileDescriptor& aGCLog,
@@ -827,6 +854,7 @@ private:
                                 const nsString& aContentDispositionFilename,
                                 const bool& aForceSave,
                                 const int64_t& aContentLength,
+                                const bool& aWasFileChannel,
                                 const OptionalURIParams& aReferrer,
                                 PBrowserParent* aBrowser) override;
 
@@ -968,6 +996,8 @@ private:
 
   virtual mozilla::ipc::IPCResult RecvPrivateDocShellsExist(const bool& aExist) override;
 
+  virtual mozilla::ipc::IPCResult RecvFirstIdle() override;
+
   virtual mozilla::ipc::IPCResult RecvAudioChannelChangeDefVolChannel(const int32_t& aChannel,
                                                                       const bool& aHidden) override;
 
@@ -995,11 +1025,6 @@ private:
                                                           uint64_t* aId) override;
 
   virtual mozilla::ipc::IPCResult RecvDeallocateLayerTreeId(const uint64_t& aId) override;
-
-  virtual mozilla::ipc::IPCResult RecvGetGraphicsFeatureStatus(const int32_t& aFeature,
-                                                               int32_t* aStatus,
-                                                               nsCString* aFailureId,
-                                                               bool* aSuccess) override;
 
   virtual mozilla::ipc::IPCResult RecvGraphicsError(const nsCString& aError) override;
 
@@ -1086,9 +1111,18 @@ private:
     InfallibleTArray<Accumulation>&& aAccumulations) override;
   virtual mozilla::ipc::IPCResult RecvAccumulateChildKeyedHistogram(
     InfallibleTArray<KeyedAccumulation>&& aAccumulations) override;
+  virtual mozilla::ipc::IPCResult RecvUpdateChildScalars(
+    InfallibleTArray<ScalarAction>&& aScalarActions) override;
+  virtual mozilla::ipc::IPCResult RecvUpdateChildKeyedScalars(
+    InfallibleTArray<KeyedScalarAction>&& aScalarActions) override;
 public:
   void SendGetFilesResponseAndForget(const nsID& aID,
                                      const GetFilesResponseResult& aResult);
+
+  bool SendRequestMemoryReport(const uint32_t& aGeneration,
+                               const bool& aAnonymize,
+                               const bool& aMinimizeMemoryUsage,
+                               const MaybeFileDesc& aDMDFile) override;
 
 private:
 
@@ -1148,12 +1182,13 @@ private:
 
   PProcessHangMonitorParent* mHangMonitorActor;
 
-#ifdef MOZ_ENABLE_PROFILER_SPS
+#ifdef MOZ_GECKO_PROFILER
   RefPtr<mozilla::ProfileGatherer> mGatherer;
 #endif
   nsCString mProfile;
 
   UniquePtr<gfx::DriverCrashGuard> mDriverCrashGuard;
+  UniquePtr<MemoryReportRequestHost> mMemoryReportRequest;
 
 #if defined(XP_LINUX) && defined(MOZ_CONTENT_SANDBOX)
   mozilla::UniquePtr<SandboxBroker> mSandboxBroker;

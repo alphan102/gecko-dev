@@ -161,12 +161,15 @@ OutputParser.prototype = {
       return (new angleUtils.CssAngle(angle)).valid;
     };
 
+    let spaceNeeded = false;
     while (true) {
       let token = tokenStream.nextToken();
       if (!token) {
         break;
       }
       if (token.tokenType === "comment") {
+        // This doesn't change spaceNeeded, because we didn't emit
+        // anything to the output.
         continue;
       }
 
@@ -224,6 +227,11 @@ OutputParser.prototype = {
         case "hash": {
           let original = text.substring(token.startOffset, token.endOffset);
           if (colorOK() && colorUtils.isValidCSSColor(original, this.cssColor4)) {
+            if (spaceNeeded) {
+              // Insert a space to prevent token pasting when a #xxx
+              // color is changed to something like rgb(...).
+              this._appendTextNode(" ");
+            }
             this._appendColor(original, options);
           } else {
             this._appendTextNode(original);
@@ -259,6 +267,13 @@ OutputParser.prototype = {
             text.substring(token.startOffset, token.endOffset));
           break;
       }
+
+      // If this token might possibly introduce token pasting when
+      // color-cycling, require a space.
+      spaceNeeded = (token.tokenType === "ident" || token.tokenType === "at" ||
+                     token.tokenType === "id" || token.tokenType === "hash" ||
+                     token.tokenType === "number" || token.tokenType === "dimension" ||
+                     token.tokenType === "percentage" || token.tokenType === "dimension");
     }
 
     let result = this._toDOM();
@@ -344,7 +359,7 @@ OutputParser.prototype = {
         class: options.angleSwatchClass
       });
       this.angleSwatches.set(swatch, angleObj);
-      swatch.addEventListener("mousedown", this._onAngleSwatchMouseDown, false);
+      swatch.addEventListener("mousedown", this._onAngleSwatchMouseDown);
 
       // Add click listener to stop event propagation when shift key is pressed
       // in order to prevent the value input to be focused.
@@ -354,7 +369,7 @@ OutputParser.prototype = {
         if (event.shiftKey) {
           event.stopPropagation();
         }
-      }, false);
+      });
       EventEmitter.decorate(swatch);
       container.appendChild(swatch);
     }
@@ -412,8 +427,7 @@ OutputParser.prototype = {
           style: "background-color:" + color
         });
         this.colorSwatches.set(swatch, colorObj);
-        swatch.addEventListener("mousedown", this._onColorSwatchMouseDown,
-                                false);
+        swatch.addEventListener("mousedown", this._onColorSwatchMouseDown);
         EventEmitter.decorate(swatch);
         container.appendChild(swatch);
       }

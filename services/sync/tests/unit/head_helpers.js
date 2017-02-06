@@ -1,13 +1,23 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* import-globals-from head_appinfo.js */
+/* import-globals-from ../../../common/tests/unit/head_helpers.js */
+
+// From head_http_server.js (which also imports this file).
+/* global new_timestamp */
+
+// This file expects Service to be defined in the global scope when EHTestsCommon
+// is used (from service.js).
+/* global Service */
+
 Cu.import("resource://services-common/async.js");
 Cu.import("resource://testing-common/services/common/utils.js");
 Cu.import("resource://testing-common/PlacesTestUtils.jsm");
 Cu.import("resource://services-sync/util.js");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyGetter(this, 'SyncPingSchema', function() {
+XPCOMUtils.defineLazyGetter(this, "SyncPingSchema", function() {
   let ns = {};
   Cu.import("resource://gre/modules/FileUtils.jsm", ns);
   let stream = Cc["@mozilla.org/network/file-input-stream;1"]
@@ -29,7 +39,7 @@ XPCOMUtils.defineLazyGetter(this, 'SyncPingSchema', function() {
   return schema;
 });
 
-XPCOMUtils.defineLazyGetter(this, 'SyncPingValidator', function() {
+XPCOMUtils.defineLazyGetter(this, "SyncPingValidator", function() {
   let ns = {};
   Cu.import("resource://testing-common/ajv-4.1.1.js", ns);
   let ajv = new ns.Ajv({ async: "co*" });
@@ -37,7 +47,7 @@ XPCOMUtils.defineLazyGetter(this, 'SyncPingValidator', function() {
 });
 
 var provider = {
-  getFile: function(prop, persistent) {
+  getFile(prop, persistent) {
     persistent.value = true;
     switch (prop) {
       case "ExtPrefDL":
@@ -72,6 +82,7 @@ function loadAddonTestFunctions() {
   const path = ExtensionsTestPath("/head_addons.js");
   let file = do_get_file(path);
   let uri = Services.io.newFileURI(file);
+  /* import-globals-from ../../../../toolkit/mozapps/extensions/test/xpcshell/head_addons.js */
   Services.scriptloader.loadSubScript(uri.spec, gGlobalScope);
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
 }
@@ -88,6 +99,7 @@ function webExtensionsTestPath(path) {
  * Loads the WebExtension test functions by importing its test file.
  */
 function loadWebExtensionTestFunctions() {
+  /* import-globals-from ../../../../toolkit/components/extensions/test/xpcshell/head_sync.js */
   const path = webExtensionsTestPath("/head_sync.js");
   let file = do_get_file(path);
   let uri = Services.io.newFileURI(file);
@@ -157,7 +169,7 @@ function installAddon(name) {
  */
 function uninstallAddon(addon) {
   let cb = Async.makeSyncCallback();
-  let listener = {onUninstalled: function(uninstalled) {
+  let listener = {onUninstalled(uninstalled) {
     if (uninstalled.id == addon.id) {
       AddonManager.removeAddonListener(listener);
       cb(uninstalled);
@@ -169,7 +181,7 @@ function uninstallAddon(addon) {
   Async.waitForSyncCallback(cb);
 }
 
-function generateNewKeys(collectionKeys, collections=null) {
+function generateNewKeys(collectionKeys, collections = null) {
   let wbo = collectionKeys.generateNewKeysWBO(collections);
   let modified = new_timestamp();
   collectionKeys.setContents(wbo.cleartext, modified);
@@ -179,21 +191,21 @@ function generateNewKeys(collectionKeys, collections=null) {
 // These reflect part of the internal structure of TabEngine,
 // and stub part of Service.wm.
 
-function mockShouldSkipWindow (win) {
+function mockShouldSkipWindow(win) {
   return win.closed ||
          win.mockIsPrivate;
 }
 
-function mockGetTabState (tab) {
+function mockGetTabState(tab) {
   return tab;
 }
 
 function mockGetWindowEnumerator(url, numWindows, numTabs, indexes, moreURLs) {
   let elements = [];
 
-  function url2entry(url) {
+  function url2entry(urlToConvert) {
     return {
-      url: ((typeof url == "function") ? url() : url),
+      url: ((typeof urlToConvert == "function") ? urlToConvert() : urlToConvert),
       title: "title"
     };
   }
@@ -204,7 +216,7 @@ function mockGetWindowEnumerator(url, numWindows, numTabs, indexes, moreURLs) {
       closed: false,
       mockIsPrivate: false,
       gBrowser: {
-        tabs: tabs,
+        tabs,
       },
     };
     elements.push(win);
@@ -229,7 +241,7 @@ function mockGetWindowEnumerator(url, numWindows, numTabs, indexes, moreURLs) {
       tabs: [],
     },
   });
- 
+
   elements.push({
     closed: false,
     mockIsPrivate: true,
@@ -239,10 +251,10 @@ function mockGetWindowEnumerator(url, numWindows, numTabs, indexes, moreURLs) {
   });
 
   return {
-    hasMoreElements: function () {
+    hasMoreElements() {
       return elements.length;
     },
-    getNext: function () {
+    getNext() {
       return elements.shift();
     },
   };
@@ -450,7 +462,7 @@ function promiseOneObserver(topic, callback) {
   return new Promise((resolve, reject) => {
     let observer = function(subject, data) {
       Svc.Obs.remove(topic, observer);
-      resolve({ subject: subject, data: data });
+      resolve({ subject, data });
     }
     Svc.Obs.add(topic, observer)
   });
@@ -471,5 +483,3 @@ function promiseNextTick() {
 Utils.getDefaultDeviceName = function() {
   return "Test device name";
 };
-
-

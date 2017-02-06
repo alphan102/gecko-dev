@@ -631,11 +631,12 @@ child:
      */
     async Show(ScreenIntSize size,
                ShowInfo info,
-               TextureFactoryIdentifier textureFactoryIdentifier,
-               uint64_t layersId,
-               nullable PRenderFrame renderFrame,
                bool parentIsActive,
                nsSizeMode sizeMode);
+
+    async InitRendering(TextureFactoryIdentifier textureFactoryIdentifier,
+                        uint64_t layersId,
+                        nullable PRenderFrame renderFrame);
 
     async LoadURL(nsCString uri, ShowInfo info);
 
@@ -907,7 +908,7 @@ child:
      * Tell the child that it is a fresh process created for a Large-Allocation
      * load.
      */
-    async SetFreshProcess();
+    async SetIsLargeAllocation(bool aIsLA, bool aNewProcess);
 
 /*
  * FIXME: write protocol!

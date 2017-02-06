@@ -6,6 +6,7 @@
 const {utils: Cu} = Components;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
+Cu.import("resource://gre/modules/Log.jsm");
 
 const REASONS = {
   APP_STARTUP: 1,      // The application is starting up.
@@ -19,14 +20,17 @@ const REASONS = {
 };
 
 const PREF_BRANCH = "extensions.shield-recipe-client.";
-const PREFS = {
+const DEFAULT_PREFS = {
   api_url: "https://self-repair.mozilla.org/api/v1",
   dev_mode: false,
   enabled: true,
   startup_delay_seconds: 300,
+  "logging.level": Log.Level.Warn,
+  user_id: "",
 };
 const PREF_DEV_MODE = "extensions.shield-recipe-client.dev_mode";
 const PREF_SELF_SUPPORT_ENABLED = "browser.selfsupport.enabled";
+const PREF_LOGGING_LEVEL = PREF_BRANCH + "logging.level";
 
 let shouldRun = true;
 
@@ -35,7 +39,7 @@ this.install = function() {
   // next startup to run, unless the dev_mode preference is set.
   if (Preferences.get(PREF_SELF_SUPPORT_ENABLED, true)) {
     Preferences.set(PREF_SELF_SUPPORT_ENABLED, false);
-    if (!Services.prefs.getBoolPref(PREF_DEV_MODE, false)) {
+    if (!Preferences.get(PREF_DEV_MODE, false)) {
       shouldRun = false;
     }
   }
@@ -48,11 +52,18 @@ this.startup = function() {
     return;
   }
 
+  // Setup logging and listen for changes to logging prefs
+  Cu.import("resource://shield-recipe-client/lib/LogManager.jsm");
+  LogManager.configure(Services.prefs.getIntPref(PREF_LOGGING_LEVEL));
+  Preferences.observe(PREF_LOGGING_LEVEL, LogManager.configure);
+
   Cu.import("resource://shield-recipe-client/lib/RecipeRunner.jsm");
   RecipeRunner.init();
 };
 
 this.shutdown = function(data, reason) {
+  Preferences.ignore(PREF_LOGGING_LEVEL, LogManager.configure);
+
   Cu.import("resource://shield-recipe-client/lib/CleanupManager.jsm");
 
   CleanupManager.cleanup();
@@ -62,10 +73,11 @@ this.shutdown = function(data, reason) {
   }
 
   const modules = [
-    "data/EventEmitter.js",
     "lib/CleanupManager.jsm",
     "lib/EnvExpressions.jsm",
+    "lib/EventEmitter.jsm",
     "lib/Heartbeat.jsm",
+    "lib/LogManager.jsm",
     "lib/NormandyApi.jsm",
     "lib/NormandyDriver.jsm",
     "lib/RecipeRunner.jsm",
@@ -82,21 +94,11 @@ this.uninstall = function() {
 };
 
 function setDefaultPrefs() {
-  const branch = Services.prefs.getDefaultBranch(PREF_BRANCH);
-  for (const [key, val] of Object.entries(PREFS)) {
+  for (const [key, val] of Object.entries(DEFAULT_PREFS)) {
+    const fullKey = PREF_BRANCH + key;
     // If someone beat us to setting a default, don't overwrite it.
-    if (branch.getPrefType(key) !== branch.PREF_INVALID)
-      continue;
-    switch (typeof val) {
-      case "boolean":
-        branch.setBoolPref(key, val);
-        break;
-      case "number":
-        branch.setIntPref(key, val);
-        break;
-      case "string":
-        branch.setCharPref(key, val);
-        break;
+    if (!Preferences.isSet(fullKey)) {
+      Preferences.set(fullKey, val);
     }
   }
 }

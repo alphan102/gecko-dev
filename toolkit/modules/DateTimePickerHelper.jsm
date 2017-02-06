@@ -97,13 +97,10 @@ this.DateTimePickerHelper = {
 
   // Called when picker value has changed, notify input box about it.
   updateInputBoxValue(aEvent) {
-    // TODO: parse data based on input type.
-    const { hour, minute } = aEvent.detail;
-    debug("hour: " + hour + ", minute: " + minute);
     let browser = this.weakBrowser ? this.weakBrowser.get() : null;
     if (browser) {
       browser.messageManager.sendAsyncMessage(
-        "FormDateTime:PickerValueChanged", { hour, minute });
+        "FormDateTime:PickerValueChanged", aEvent.detail);
     }
   },
 
@@ -122,7 +119,7 @@ this.DateTimePickerHelper = {
 
     debug("Opening picker with details: " + JSON.stringify(detail));
 
-    let window = aBrowser.ownerDocument.defaultView;
+    let window = aBrowser.ownerGlobal;
     let tabbrowser = window.gBrowser;
     if (Services.focus.activeWindow != window ||
         tabbrowser.selectedBrowser != aBrowser) {

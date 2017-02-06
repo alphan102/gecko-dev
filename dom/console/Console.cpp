@@ -152,7 +152,7 @@ public:
   }
 
   void
-  SetOriginAttributes(const PrincipalOriginAttributes& aOriginAttributes)
+  SetOriginAttributes(const OriginAttributes& aOriginAttributes)
   {
     mOriginAttributes = aOriginAttributes;
   }
@@ -248,7 +248,7 @@ public:
   uint64_t mInnerIDNumber;
   nsString mInnerIDString;
 
-  PrincipalOriginAttributes mOriginAttributes;
+  OriginAttributes mOriginAttributes;
 
   nsString mMethodString;
 
@@ -1201,7 +1201,7 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
     return;
   }
 
-  PrincipalOriginAttributes oa;
+  OriginAttributes oa;
 
   if (mWindow) {
     // Save the principal's OriginAttributes in the console event data
@@ -2263,11 +2263,16 @@ Console::NotifyHandler(JSContext* aCx, const Sequence<JS::Value>& aArguments,
 
   JS::Rooted<JS::Value> value(aCx);
 
+  JS::Rooted<JSObject*> callable(aCx, mConsoleEventNotifier->CallableOrNull());
+  if (NS_WARN_IF(!callable)) {
+    return;
+  }
+
   // aCx and aArguments are in the same compartment because this method is
   // called directly when a Console.something() runs.
   // mConsoleEventNotifier->Callable() is the scope where value will be sent to.
   if (NS_WARN_IF(!PopulateConsoleNotificationInTheTargetScope(aCx, aArguments,
-                                                              mConsoleEventNotifier->Callable(),
+                                                              callable,
                                                               &value,
                                                               aCallData))) {
     return;

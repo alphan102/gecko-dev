@@ -9,7 +9,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "ContextualIdentityService",
                                   "resource://gre/modules/ContextualIdentityService.jsm");
 
 var {
-  EventManager,
+  SingletonEventManager,
 } = ExtensionUtils;
 
 var DEFAULT_STORE = "firefox-default";
@@ -421,14 +421,11 @@ extensions.registerSchemaAPI("cookies", "addon_parent", context => {
 
       getAllCookieStores: function() {
         let data = {};
-        for (let window of WindowListManager.browserWindows()) {
-          let tabs = TabManager.for(extension).getTabs(window);
-          for (let tab of tabs) {
-            if (!(tab.cookieStoreId in data)) {
-              data[tab.cookieStoreId] = [];
-            }
-            data[tab.cookieStoreId].push(tab);
+        for (let tab of extension.tabManager.query()) {
+          if (!(tab.cookieStoreId in data)) {
+            data[tab.cookieStoreId] = [];
           }
+          data[tab.cookieStoreId].push(tab.id);
         }
 
         let result = [];
@@ -438,13 +435,13 @@ extensions.registerSchemaAPI("cookies", "addon_parent", context => {
         return Promise.resolve(result);
       },
 
-      onChanged: new EventManager(context, "cookies.onChanged", fire => {
+      onChanged: new SingletonEventManager(context, "cookies.onChanged", fire => {
         let observer = (subject, topic, data) => {
           let notify = (removed, cookie, cause) => {
             cookie.QueryInterface(Ci.nsICookie2);
 
             if (extension.whiteListedHosts.matchesCookie(cookie)) {
-              fire({removed, cookie: convert({cookie, isPrivate: topic == "private-cookie-changed"}), cause});
+              fire.async({removed, cookie: convert({cookie, isPrivate: topic == "private-cookie-changed"}), cause});
             }
           };
 

@@ -290,6 +290,8 @@ function HashCompleterRequest(aCompleter, aGethashUrl) {
   // Multiple partial hashes can be associated with the same tables
   // so we use a map here.
   this.tableNames = new Map();
+
+  this.telemetryProvider = "";
 }
 HashCompleterRequest.prototype = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIRequestObserver,
@@ -316,6 +318,11 @@ HashCompleterRequest.prototype = {
             'the same gethash URL.');
       }
       this.tableNames.set(aTableName);
+
+      // Assuming all tables with the same gethash URL have the same provider
+      if (this.telemetryProvider == "") {
+        this.telemetryProvider = gUrlUtil.getTelemetryProvider(aTableName);
+      }
     }
   },
 
@@ -376,7 +383,8 @@ HashCompleterRequest.prototype = {
     // channel.
     if (this._channel && this._channel.isPending()) {
       log("cancelling request to " + this.gethashUrl + "\n");
-      Services.telemetry.getHistogramById("URLCLASSIFIER_COMPLETE_TIMEOUT").add(1);
+      Services.telemetry.getKeyedHistogramById("URLCLASSIFIER_COMPLETE_TIMEOUT2").
+        add(this.telemetryProvider, 1);
       this._channel.cancel(Cr.NS_BINDING_ABORTED);
     }
   },
@@ -517,32 +525,39 @@ HashCompleterRequest.prototype = {
   },
 
   handleResponseV4: function HCR_handleResponseV4() {
-    let callback = (aCompleteHash,
-                    aTableNames,
-                    aMinWaitDuration,
-                    aNegCacheDuration,
-                    aPerHashCacheDuration) => {
-      log("V4 response callback: " + JSON.stringify(aCompleteHash) + ", " +
-          aTableNames + ", " +
-          aMinWaitDuration + ", " +
-          aNegCacheDuration + ", " +
-          aPerHashCacheDuration);
+    let callback = {
+      onCompleteHashFound : (aCompleteHash,
+                             aTableNames,
+                             aPerHashCacheDuration) => {
+        log("V4 fullhash response complete hash found callback: " +
+            JSON.stringify(aCompleteHash) + ", " +
+            aTableNames + ", CacheDuration(" + aPerHashCacheDuration + ")");
 
-      // Filter table names which we didn't requested.
-      let filteredTables = aTableNames.split(",").filter(name => {
-        return this.tableNames.get(name);
-      });
-      if (0 === filteredTables.length) {
-        log("ERROR: Got complete hash which is from unknown table.");
-        return;
-      }
-      if (filteredTables.length > 1) {
-        log("WARNING: Got complete hash which has ambigious threat type.");
-      }
+        // Filter table names which we didn't requested.
+        let filteredTables = aTableNames.split(",").filter(name => {
+          return this.tableNames.get(name);
+        });
+        if (0 === filteredTables.length) {
+          log("ERROR: Got complete hash which is from unknown table.");
+          return;
+        }
+        if (filteredTables.length > 1) {
+          log("WARNING: Got complete hash which has ambigious threat type.");
+        }
 
-      this.handleItem(aCompleteHash, filteredTables[0], 0);
+        this.handleItem(aCompleteHash, filteredTables[0], 0);
 
-      // TODO: Bug 1311935 - Implement v4 cache.
+        // TODO: Bug 1311935 - Implement v4 cache.
+      },
+
+      onResponseParsed : (aMinWaitDuration,
+                          aNegCacheDuration) => {
+        log("V4 fullhash response parsed callback: " +
+            "MinWaitDuration(" + aMinWaitDuration + "), " +
+            "NegativeCacheDuration(" + aNegCacheDuration + ")");
+
+        // TODO: Bug 1311935 - Implement v4 cache.
+      },
     };
 
     gUrlUtil.parseFindFullHashResponseV4(this._response, callback);
@@ -664,10 +679,10 @@ HashCompleterRequest.prototype = {
     let success = Components.isSuccessCode(aStatusCode);
     log('Received a ' + httpStatus + ' status code from the gethash server (success=' + success + ').');
 
-    let histogram =
-      Services.telemetry.getHistogramById("URLCLASSIFIER_COMPLETE_REMOTE_STATUS");
-    histogram.add(httpStatusToBucket(httpStatus));
-    Services.telemetry.getHistogramById("URLCLASSIFIER_COMPLETE_TIMEOUT").add(0);
+    Services.telemetry.getKeyedHistogramById("URLCLASSIFIER_COMPLETE_REMOTE_STATUS2").
+      add(this.telemetryProvider, httpStatusToBucket(httpStatus));
+    Services.telemetry.getKeyedHistogramById("URLCLASSIFIER_COMPLETE_TIMEOUT2").
+      add(this.telemetryProvider, 0);
 
     // Notify the RequestBackoff once a response is received.
     this._completer.finishRequest(this.gethashUrl, httpStatus);

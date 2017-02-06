@@ -133,8 +133,6 @@ function open_compatibility_window(aDisabledAddons, aCallback) {
   var win = ww.openWindow(null, URI_EXTENSION_UPDATE_DIALOG, "", features, variant);
 
   win.addEventListener("load", function() {
-    win.removeEventListener("load", arguments.callee, false);
-
     info("Compatibility dialog opened");
 
     function page_shown(aEvent) {
@@ -142,32 +140,29 @@ function open_compatibility_window(aDisabledAddons, aCallback) {
         info("Page " + aEvent.target.pageid + " shown");
     }
 
-    win.addEventListener("pageshow", page_shown, false);
+    win.addEventListener("pageshow", page_shown);
     win.addEventListener("unload", function() {
-      win.removeEventListener("unload", arguments.callee, false);
-      win.removeEventListener("pageshow", page_shown, false);
+      win.removeEventListener("pageshow", page_shown);
       info("Compatibility dialog closed");
-    }, false);
+    }, {once: true});
 
     aCallback(win);
-  }, false);
+  }, {once: true});
 }
 
 function wait_for_window_close(aWindow, aCallback) {
   aWindow.addEventListener("unload", function() {
-    aWindow.removeEventListener("unload", arguments.callee, false);
     aCallback();
-  }, false);
+  }, {once: true});
 }
 
 function wait_for_page(aWindow, aPageId, aCallback) {
   var page = aWindow.document.getElementById(aPageId);
   page.addEventListener("pageshow", function() {
-    page.removeEventListener("pageshow", arguments.callee, false);
     executeSoon(function() {
       aCallback(aWindow);
     });
-  }, false);
+  }, {once: true});
 }
 
 function get_list_names(aList) {

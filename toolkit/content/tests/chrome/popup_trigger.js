@@ -12,9 +12,9 @@ function cacheEvent(modifiers) {
     cachedEvent = event;
   }
 
-  window.addEventListener("mousedown", mouseFn, false);
+  window.addEventListener("mousedown", mouseFn);
   synthesizeMouse(document.documentElement, 0, 0, modifiers);
-  window.removeEventListener("mousedown", mouseFn, false);
+  window.removeEventListener("mousedown", mouseFn);
 
   return cachedEvent;
 }
@@ -847,9 +847,9 @@ var popupTests = [
   testname: "remove content",
   test(testname, step) {
     var submenupopup = document.getElementById("submenupopup");
-    submenupopup.parentNode.removeChild(submenupopup);
+    submenupopup.remove();
     var popup = document.getElementById("thepopup");
-    popup.parentNode.removeChild(popup);
+    popup.remove();
   }
 }
 

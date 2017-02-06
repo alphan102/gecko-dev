@@ -28,20 +28,20 @@ var gSearchPane = {
     this.buildDefaultEngineDropDown();
 
     let addEnginesLink = document.getElementById("addEngines");
-    let searchEnginesURL = Services.wm.getMostRecentWindow('navigator:browser')
+    let searchEnginesURL = Services.wm.getMostRecentWindow("navigator:browser")
                                       .BrowserSearch.searchEnginesURL;
     addEnginesLink.setAttribute("href", searchEnginesURL);
 
-    window.addEventListener("click", this, false);
-    window.addEventListener("command", this, false);
-    window.addEventListener("dragstart", this, false);
-    window.addEventListener("keypress", this, false);
-    window.addEventListener("select", this, false);
+    window.addEventListener("click", this);
+    window.addEventListener("command", this);
+    window.addEventListener("dragstart", this);
+    window.addEventListener("keypress", this);
+    window.addEventListener("select", this);
     window.addEventListener("blur", this, true);
 
     Services.obs.addObserver(this, "browser-search-engine-modified", false);
     window.addEventListener("unload", () => {
-      Services.obs.removeObserver(this, "browser-search-engine-modified", false);
+      Services.obs.removeObserver(this, "browser-search-engine-modified");
     });
 
     this._initAutocomplete();
@@ -397,9 +397,9 @@ EngineStore.prototype = {
     if (index == -1)
       throw new Error("invalid engine?");
 
-    this._engines.splice(index, 1);
+    let removedEngine = this._engines.splice(index, 1)[0];
 
-    if (this._defaultEngines.some(this._isSameEngine, this._engines[index]))
+    if (this._defaultEngines.some(this._isSameEngine, removedEngine))
       gSearchPane.showRestoreDefaults(true);
     gSearchPane.buildDefaultEngineDropDown();
     return index;

@@ -51,6 +51,10 @@ const CM_STYLES = [
   "chrome://devtools/content/sourceeditor/codemirror/mozilla.css"
 ];
 
+CM_STYLES.push(
+  "chrome://devtools/content/sourceeditor/codemirror/old-debugger.css"
+);
+
 const CM_SCRIPTS = [
   "chrome://devtools/content/sourceeditor/codemirror/codemirror.bundle.js",
 ];
@@ -381,7 +385,7 @@ Editor.prototype = {
 
       this.emit("popupOpen", ev, popup);
       popup.openPopupAtScreen(ev.screenX, ev.screenY, true);
-    }, false);
+    });
 
     cm.on("focus", () => this.emit("focus"));
     cm.on("scroll", () => this.emit("scroll"));

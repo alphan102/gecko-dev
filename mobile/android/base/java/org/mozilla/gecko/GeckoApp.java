@@ -43,9 +43,7 @@ import org.mozilla.gecko.util.BundleEventListener;
 import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.FileUtils;
 import org.mozilla.gecko.util.GeckoBundle;
-import org.mozilla.gecko.util.GeckoRequest;
 import org.mozilla.gecko.util.HardwareUtils;
-import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.PrefUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 
@@ -85,6 +83,7 @@ import android.util.AttributeSet;
 import android.util.Base64;
 import android.util.Log;
 import android.util.SparseBooleanArray;
+import android.util.SparseIntArray;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -110,6 +109,7 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.mozilla.gecko.util.ViewUtil;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -206,7 +206,7 @@ public abstract class GeckoApp
     protected boolean mShouldRestore;
     private boolean mSessionRestoreParsingFinished = false;
 
-    private int lastSelectedTabId = -1;
+    protected int lastSelectedTabId = -1;
 
     private boolean foregrounded = false;
 
@@ -219,14 +219,22 @@ public abstract class GeckoApp
         private boolean tabsWereSkipped;
         private boolean tabsWereProcessed;
 
+        private SparseIntArray tabIdMap;
+
         public LastSessionParser(JSONArray tabs, JSONObject windowObject, boolean isExternalURL) {
             this.tabs = tabs;
             this.windowObject = windowObject;
             this.isExternalURL = isExternalURL;
+
+            tabIdMap = new SparseIntArray();
         }
 
         public boolean allTabsSkipped() {
             return tabsWereSkipped && !tabsWereProcessed;
+        }
+
+        public int getNewTabId(int oldTabId) {
+            return tabIdMap.get(oldTabId, -1);
         }
 
         @Override
@@ -278,7 +286,12 @@ public abstract class GeckoApp
             });
 
             try {
-                tabObject.put("tabId", tab.getId());
+                int oldTabId = tabObject.optInt("tabId", -1);
+                int newTabId = tab.getId();
+                tabObject.put("tabId", newTabId);
+                if  (oldTabId >= 0) {
+                    tabIdMap.put(oldTabId, newTabId);
+                }
             } catch (JSONException e) {
                 Log.e(LOGTAG, "JSON error", e);
             }
@@ -288,6 +301,32 @@ public abstract class GeckoApp
         @Override
         public void onClosedTabsRead(final JSONArray closedTabData) throws JSONException {
             windowObject.put("closedTabs", closedTabData);
+        }
+
+        /**
+         * Updates stored parent tab IDs in the session store data to match the new tab IDs
+         * that have been allocated during startup session restore.
+         *
+         * @param tabData A JSONArray containg stored session store tabs.
+         */
+        public void updateParentId(final JSONArray tabData) {
+            if (tabData == null) {
+                return;
+            }
+
+            for (int i = 0; i < tabData.length(); i++) {
+                try {
+                    JSONObject tabObject = tabData.getJSONObject(i);
+
+                    int parentId = tabObject.getInt("parentId");
+                    int newParentId = getNewTabId(parentId);
+
+                    tabObject.put("parentId", newParentId);
+                } catch (JSONException ex) {
+                    // Tabs are not guaranteed to have a parentId,
+                    // so just skip the tab and try the next one.
+                }
+            }
         }
     };
 
@@ -544,17 +583,20 @@ public abstract class GeckoApp
                 Log.e(LOGTAG, "Error adding sanitize object", ex);
             }
 
-            // If the user has opted out of session restore, and does want to clear history
+            // If the user wants to clear open tabs, or else has opted out of session restore and does want to clear history,
             // we also want to prevent the current session info from being saved.
-            if (clearObj.has("private.data.history")) {
-                final String sessionRestore = getSessionRestorePreference(getSharedPreferences());
-                try {
-                    res.put("dontSaveSession", "quit".equals(sessionRestore));
-                } catch (JSONException ex) {
-                    Log.e(LOGTAG, "Error adding session restore data", ex);
-                }
-            }
+            try {
+                if (clearObj.has("private.data.openTabs")) {
+                    res.put("dontSaveSession", true);
+                } else if (clearObj.has("private.data.history")) {
 
+                    final String sessionRestore = getSessionRestorePreference(getSharedPreferences());
+                    res.put("dontSaveSession", "quit".equals(sessionRestore));
+
+                }
+            } catch (JSONException ex) {
+                Log.e(LOGTAG, "Error adding session restore data", ex);
+            }
             GeckoAppShell.notifyObservers("Browser:Quit", res.toString());
             // We don't call doShutdown() here because this creates a race condition which can
             // cause the clearing of private data to fail. Instead, we shut down the UI only after
@@ -821,12 +863,16 @@ public abstract class GeckoApp
                 SparseBooleanArray checkedItemPositions = listView.getCheckedItemPositions();
 
                 // An array of the indices of the permissions we want to clear
-                JSONArray permissionsToClear = new JSONArray();
-                for (int i = 0; i < checkedItemPositions.size(); i++)
-                    if (checkedItemPositions.get(i))
-                        permissionsToClear.put(i);
+                final ArrayList<Integer> permissionsToClear = new ArrayList<>();
+                for (int i = 0; i < checkedItemPositions.size(); i++) {
+                    if (checkedItemPositions.get(i)) {
+                        permissionsToClear.add(i);
+                    }
+                }
 
-                GeckoAppShell.notifyObservers("Permissions:Clear", permissionsToClear.toString());
+                final GeckoBundle data = new GeckoBundle(1);
+                data.putIntArray("permissions", permissionsToClear);
+                EventDispatcher.getInstance().dispatch("Permissions:Clear", data);
             }
         });
 
@@ -1462,6 +1508,9 @@ public abstract class GeckoApp
         if (loc.equals(mLastLocale)) {
             Log.d(LOGTAG, "New locale same as old; onLocaleReady has nothing to do.");
         }
+        BrowserLocaleManager.getInstance().updateConfiguration(GeckoApp.this, loc);
+        ViewUtil.setLayoutDirection(getWindow().getDecorView(), loc);
+        refreshChrome();
 
         // The URL bar hint needs to be populated.
         TextView urlBar = (TextView) findViewById(R.id.url_bar_title);
@@ -1547,10 +1596,26 @@ public abstract class GeckoApp
         return uri != null && !AboutPages.isAboutHome(uri);
     }
 
+    protected int getNewTabFlags() {
+        final boolean isFirstTab = !mWasFirstTabShownAfterActivityUnhidden;
+
+        final SafeIntent intent = new SafeIntent(getIntent());
+        final String action = intent.getAction();
+
+        int flags = Tabs.LOADURL_NEW_TAB | Tabs.LOADURL_USER_ENTERED | Tabs.LOADURL_EXTERNAL;
+        if (ACTION_HOMESCREEN_SHORTCUT.equals(action)) {
+            flags |= Tabs.LOADURL_PINNED;
+        }
+        if (isFirstTab) {
+            flags |= Tabs.LOADURL_FIRST_AFTER_ACTIVITY_UNHIDDEN;
+        }
+
+        return flags;
+    }
+
     private void initialize() {
         mInitialized = true;
 
-        final boolean isFirstTab = !mWasFirstTabShownAfterActivityUnhidden;
         mWasFirstTabShownAfterActivityUnhidden = true; // Reset since we'll be loading a tab.
 
         final SafeIntent intent = new SafeIntent(getIntent());
@@ -1590,13 +1655,7 @@ public abstract class GeckoApp
             processActionViewIntent(new Runnable() {
                 @Override
                 public void run() {
-                    int flags = Tabs.LOADURL_NEW_TAB | Tabs.LOADURL_USER_ENTERED | Tabs.LOADURL_EXTERNAL;
-                    if (ACTION_HOMESCREEN_SHORTCUT.equals(action)) {
-                        flags |= Tabs.LOADURL_PINNED;
-                    }
-                    if (isFirstTab) {
-                        flags |= Tabs.LOADURL_FIRST_AFTER_ACTIVITY_UNHIDDEN;
-                    }
+                    final int flags = getNewTabFlags();
                     loadStartupTab(passedUri, intent, flags);
                 }
             });
@@ -1727,7 +1786,14 @@ public abstract class GeckoApp
             }
 
             if (tabs.length() > 0) {
+                // Update all parent tab IDs ...
+                parser.updateParentId(tabs);
                 windowObject.put("tabs", tabs);
+                // ... and for recently closed tabs as well (if we've got any).
+                JSONArray closedTabs = windowObject.optJSONArray("closedTabs");
+                parser.updateParentId(closedTabs);
+                windowObject.putOpt("closedTabs", closedTabs);
+
                 sessionString = new JSONObject().put("windows", new JSONArray().put(windowObject)).toString();
             } else {
                 if (parser.allTabsSkipped() || sessionDataValid) {
@@ -1896,6 +1962,18 @@ public abstract class GeckoApp
 
     @Override
     public void createShortcut(final String title, final String url) {
+
+        final Tab selectedTab = Tabs.getInstance().getSelectedTab();
+
+        if (selectedTab.hasManifest()) {
+            // If a page has associated manifest, lets install it
+            final GeckoBundle message = new GeckoBundle();
+            message.putInt("iconSize", GeckoAppShell.getPreferredIconSize());
+            EventDispatcher.getInstance().dispatch("Browser:LoadManifest", message);
+            return;
+        }
+
+        // Otherwise we try to pick best icon from favicons etc
         Icons.with(this)
                 .pageUrl(url)
                 .skipNetwork()
@@ -1905,12 +1983,12 @@ public abstract class GeckoApp
                 .execute(new IconCallback() {
                     @Override
                     public void onIconResponse(IconResponse response) {
-                        doCreateShortcut(title, url, response.getBitmap());
+                        createShortcut(title, url, response.getBitmap());
                     }
                 });
     }
 
-    private void doCreateShortcut(final String aTitle, final String aURI, final Bitmap aIcon) {
+    public void createShortcut(final String aTitle, final String aURI, final Bitmap aIcon) {
         // The intent to be launched by the shortcut.
         Intent shortcutIntent = new Intent();
         shortcutIntent.setAction(GeckoApp.ACTION_HOMESCREEN_SHORTCUT);
@@ -2315,7 +2393,7 @@ public abstract class GeckoApp
     }
 
     public void showSDKVersionError() {
-        final String message = getString(R.string.unsupported_sdk_version, Build.CPU_ABI, Build.VERSION.SDK_INT);
+        final String message = getString(R.string.unsupported_sdk_version, Build.CPU_ABI, Integer.toString(Build.VERSION.SDK_INT));
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
@@ -2509,52 +2587,48 @@ public abstract class GeckoApp
         }
 
         // Give Gecko a chance to handle the back press first, then fallback to the Java UI.
-        GeckoAppShell.sendRequestToGecko(new GeckoRequest("Browser:OnBackPressed", null) {
+        getAppEventDispatcher().dispatch("Browser:OnBackPressed", null, new EventCallback() {
             @Override
-            public void onResponse(NativeJSObject nativeJSObject) {
-                if (!nativeJSObject.getBoolean("handled")) {
+            public void sendSuccess(final Object response) {
+                if (!((GeckoBundle) response).getBoolean("handled")) {
                     // Default behavior is Gecko didn't prevent.
                     onDefault();
                 }
             }
 
             @Override
-            public void onError(NativeJSObject error) {
+            public void sendError(final Object error) {
                 // Default behavior is Gecko didn't prevent, via failure.
                 onDefault();
             }
 
-            // Return from Gecko thread, then back-press through the Java UI.
             private void onDefault() {
-                ThreadUtils.postToUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (tab.doBack()) {
-                            return;
-                        }
+                ThreadUtils.assertOnUiThread();
 
-                        if (tab.isExternal()) {
-                            onDone();
-                            Tab nextSelectedTab = Tabs.getInstance().getNextTab(tab);
-                            if (nextSelectedTab != null) {
-                                int nextSelectedTabId = nextSelectedTab.getId();
-                                GeckoAppShell.notifyObservers("Tab:KeepZombified", Integer.toString(nextSelectedTabId));
-                            }
-                            tabs.closeTab(tab);
-                            return;
-                        }
+                if (tab.doBack()) {
+                    return;
+                }
 
-                        final int parentId = tab.getParentId();
-                        final Tab parent = tabs.getTab(parentId);
-                        if (parent != null) {
-                            // The back button should always return to the parent (not a sibling).
-                            tabs.closeTab(tab, parent);
-                            return;
-                        }
-
-                        onDone();
+                if (tab.isExternal()) {
+                    onDone();
+                    Tab nextSelectedTab = Tabs.getInstance().getNextTab(tab);
+                    if (nextSelectedTab != null) {
+                        int nextSelectedTabId = nextSelectedTab.getId();
+                        GeckoAppShell.notifyObservers("Tab:KeepZombified", Integer.toString(nextSelectedTabId));
                     }
-                });
+                    tabs.closeTab(tab);
+                    return;
+                }
+
+                final int parentId = tab.getParentId();
+                final Tab parent = tabs.getTab(parentId);
+                if (parent != null) {
+                    // The back button should always return to the parent (not a sibling).
+                    tabs.closeTab(tab, parent);
+                    return;
+                }
+
+                onDone();
             }
         });
     }

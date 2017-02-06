@@ -524,7 +524,7 @@ LoginManagerPrompter.prototype = {
     if (httpRealm.test(aRealmString))
       return [null, null, null];
 
-    var uri = Services.io.newURI(aRealmString, null, null);
+    var uri = Services.io.newURI(aRealmString);
     var pathname = "";
 
     if (uri.path != "/")
@@ -969,7 +969,7 @@ LoginManagerPrompter.prototype = {
       callback: () => {
         histogram.add(PROMPT_ADD_OR_UPDATE);
         if (histogramName == "PWMGR_PROMPT_REMEMBER_ACTION") {
-          Services.obs.notifyObservers(null, 'LoginStats:NewSavedPassword', null);
+          Services.obs.notifyObservers(null, "LoginStats:NewSavedPassword", null);
         }
         readDataFromUI();
         persistData();
@@ -1013,7 +1013,7 @@ LoginManagerPrompter.prototype = {
         timeout: Date.now() + 10000,
         persistWhileVisible: true,
         passwordNotificationType: type,
-        hideClose: true,
+        hideClose: !Services.prefs.getBoolPref("privacy.permissionPrompts.showCloseButton"),
         eventCallback(topic) {
           switch (topic) {
             case "showing":
@@ -1548,7 +1548,7 @@ LoginManagerPrompter.prototype = {
     if (aURI instanceof Ci.nsIURI) {
       uri = aURI;
     } else {
-      uri = Services.io.newURI(aURI, null, null);
+      uri = Services.io.newURI(aURI);
     }
 
     return uri.scheme + "://" + uri.hostPort;
@@ -1568,7 +1568,7 @@ LoginManagerPrompter.prototype = {
     var idnService = Cc["@mozilla.org/network/idn-service;1"].
                      getService(Ci.nsIIDNService);
     try {
-      var uri = Services.io.newURI(aURIString, null, null);
+      var uri = Services.io.newURI(aURIString);
       var baseDomain = eTLDService.getBaseDomain(uri);
       displayHost = idnService.convertToDisplayIDN(baseDomain, {});
     } catch (e) {

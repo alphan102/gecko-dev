@@ -14,6 +14,11 @@
 #include "mozilla/dom/MediaListBinding.h"
 #include "mozilla/StyleSheet.h"
 #include "nsCSSParser.h"
+#include "nsCSSRules.h"
+#include "nsMediaFeatures.h"
+#include "nsRuleNode.h"
+
+using namespace mozilla;
 
 template <class Numeric>
 int32_t DoCompare(Numeric a, Numeric b)
@@ -217,9 +222,8 @@ nsMediaQueryResultCacheKey::Matches(nsPresContext* aPresContext) const
   for (uint32_t i = 0; i < mFeatureCache.Length(); ++i) {
     const FeatureEntry *entry = &mFeatureCache[i];
     nsCSSValue actual;
-    nsresult rv =
-      (entry->mFeature->mGetter)(aPresContext, entry->mFeature, actual);
-    NS_ENSURE_SUCCESS(rv, false); // any better ideas?
+
+    entry->mFeature->mGetter(aPresContext, entry->mFeature, actual);
 
     for (uint32_t j = 0; j < entry->mExpressions.Length(); ++j) {
       const ExpressionEntry &eentry = entry->mExpressions[j];
@@ -479,9 +483,7 @@ nsMediaQuery::Matches(nsPresContext* aPresContext,
   for (uint32_t i = 0, i_end = mExpressions.Length(); match && i < i_end; ++i) {
     const nsMediaExpression &expr = mExpressions[i];
     nsCSSValue actual;
-    nsresult rv =
-      (expr.mFeature->mGetter)(aPresContext, expr.mFeature, actual);
-    NS_ENSURE_SUCCESS(rv, false); // any better ideas?
+    expr.mFeature->mGetter(aPresContext, expr.mFeature, actual);
 
     match = expr.Matches(aPresContext, actual);
     if (aKey) {
@@ -515,7 +517,7 @@ nsMediaList::~nsMediaList()
 /* virtual */ JSObject*
 nsMediaList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaListBinding::Wrap(aCx, this, aGivenProto);
+  return dom::MediaListBinding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -586,7 +588,7 @@ nsMediaList::GetMediaText(nsAString& aMediaText)
 // nsCOMPtr<nsIDocument>
 #define BEGIN_MEDIA_CHANGE(sheet, doc)                         \
   if (sheet) {                                                 \
-    doc = sheet->GetOwningDocument();                          \
+    doc = sheet->GetAssociatedDocument();                      \
   }                                                            \
   mozAutoDocUpdate updateBatch(doc, UPDATE_STYLE, true);       \
   if (sheet) {                                                 \
