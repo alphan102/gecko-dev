@@ -68,7 +68,7 @@ interface PaymentRequest : EventTarget {
   Promise<void>            abort();
   Promise<boolean>         canMakePayment();
 
-  readonly attribute DOMString?           paymentRequestID;
+  readonly attribute DOMString?           paymentRequestId;
   readonly attribute PaymentAddress?      shippingAddress;
   readonly attribute DOMString?           shippingOption;
   readonly attribute PaymentShippingType? shippingType;
