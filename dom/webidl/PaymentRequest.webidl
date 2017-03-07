@@ -38,12 +38,15 @@ dictionary PaymentDetailsModifier {
            object                data;
 };
 
-dictionary PaymentDetails {
-  required PaymentItem                      total;
-           sequence<PaymentItem>            displayItems;
-           sequence<PaymentShippingOption>  shippingOptions;
-           sequence<PaymentDetailsModifier> modifiers;
-           DOMString                        error;
+dictionary PaymentDetailsBase {
+  sequence<PaymentItem>            displayItems;
+  sequence<PaymentShippingOption>  shippingOptions;
+  sequence<PaymentDetailsModifier> modifiers;
+};
+
+dictionary PaymentDetailsInit : PaymentDetailsBase {
+           DOMString   id;
+  required PaymentItem total;
 };
 
 enum PaymentShippingType {
@@ -53,14 +56,14 @@ enum PaymentShippingType {
 };
 
 dictionary PaymentOptions {
-  boolean   requestPayerName = false;
-  boolean   requestPayerEmail = false;
-  boolean   requestPayerPhone = false;
-  boolean   requestShipping = false;
-  DOMString shippingType = "shipping";
+  boolean             requestPayerName = false;
+  boolean             requestPayerEmail = false;
+  boolean             requestPayerPhone = false;
+  boolean             requestShipping = false;
+  PaymentShippingType shippingType = "shipping";
 };
 
-[Constructor(sequence<PaymentMethodData> methodData, PaymentDetails details,
+[Constructor(sequence<PaymentMethodData> methodData, PaymentDetailsInit details,
              optional PaymentOptions options),
  SecureContext]
 interface PaymentRequest : EventTarget {
@@ -68,7 +71,7 @@ interface PaymentRequest : EventTarget {
   Promise<void>            abort();
   Promise<boolean>         canMakePayment();
 
-  readonly attribute DOMString?           paymentRequestId;
+  readonly attribute DOMString            id;
   readonly attribute PaymentAddress?      shippingAddress;
   readonly attribute DOMString?           shippingOption;
   readonly attribute PaymentShippingType? shippingType;

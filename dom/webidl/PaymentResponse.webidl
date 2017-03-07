@@ -19,7 +19,7 @@ interface PaymentResponse {
   // serializer = {attribute};
   jsonifier;
 
-  readonly attribute DOMString       paymentRequestId;
+  readonly attribute DOMString       requestId;
   readonly attribute DOMString       methodName;
   readonly attribute object          details;
   readonly attribute PaymentAddress? shippingAddress;
