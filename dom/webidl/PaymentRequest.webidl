@@ -53,11 +53,11 @@ enum PaymentShippingType {
 };
 
 dictionary PaymentOptions {
-  boolean   requestPayerName = false;
-  boolean   requestPayerEmail = false;
-  boolean   requestPayerPhone = false;
-  boolean   requestShipping = false;
-  DOMString shippingType = "shipping";
+  boolean             requestPayerName = false;
+  boolean             requestPayerEmail = false;
+  boolean             requestPayerPhone = false;
+  boolean             requestShipping = false;
+  PaymentShippingType shippingType = "shipping";
 };
 
 [Constructor(sequence<PaymentMethodData> methodData, PaymentDetails details,
