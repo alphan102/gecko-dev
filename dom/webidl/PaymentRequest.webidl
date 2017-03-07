@@ -45,6 +45,7 @@ dictionary PaymentDetailsBase {
 };
 
 dictionary PaymentDetailsInit : PaymentDetailsBase {
+           DOMString   id;
   required PaymentItem total;
 };
 
@@ -70,7 +71,7 @@ interface PaymentRequest : EventTarget {
   Promise<void>            abort();
   Promise<boolean>         canMakePayment();
 
-  readonly attribute DOMString?           paymentRequestId;
+  readonly attribute DOMString            id;
   readonly attribute PaymentAddress?      shippingAddress;
   readonly attribute DOMString?           shippingOption;
   readonly attribute PaymentShippingType? shippingType;

@@ -60,7 +60,7 @@ public:
   // (the object should be kept alive by the callee).
   already_AddRefed<Promise> CanMakePayment() { return nullptr; }
 
-  void GetPaymentRequestId(nsString& aRetVal) const { }
+  void GetId(nsString& aRetVal) const { }
 
   // Return a raw pointer here to avoid refcounting, but make sure it's safe
   // (the object should be kept alive by the callee).

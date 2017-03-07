@@ -40,7 +40,7 @@ public:
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
 
-  void GetPaymentRequestId(nsString& aRetVal) const { }
+  void GetRequestId(nsString& aRetVal) const { }
 
   void GetMethodName(nsString& aRetVal) const { }
 
