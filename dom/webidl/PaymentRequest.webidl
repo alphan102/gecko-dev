@@ -38,12 +38,14 @@ dictionary PaymentDetailsModifier {
            object                data;
 };
 
-dictionary PaymentDetails {
-  required PaymentItem                      total;
-           sequence<PaymentItem>            displayItems;
-           sequence<PaymentShippingOption>  shippingOptions;
-           sequence<PaymentDetailsModifier> modifiers;
-           DOMString                        error;
+dictionary PaymentDetailsBase {
+  sequence<PaymentItem>            displayItems;
+  sequence<PaymentShippingOption>  shippingOptions;
+  sequence<PaymentDetailsModifier> modifiers;
+};
+
+dictionary PaymentDetailsInit : PaymentDetailsBase {
+  required PaymentItem total;
 };
 
 enum PaymentShippingType {
@@ -60,7 +62,7 @@ dictionary PaymentOptions {
   PaymentShippingType shippingType = "shipping";
 };
 
-[Constructor(sequence<PaymentMethodData> methodData, PaymentDetails details,
+[Constructor(sequence<PaymentMethodData> methodData, PaymentDetailsInit details,
              optional PaymentOptions options),
  SecureContext]
 interface PaymentRequest : EventTarget {

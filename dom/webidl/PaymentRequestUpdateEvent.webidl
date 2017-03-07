@@ -7,11 +7,16 @@
  *   https://www.w3.org/TR/payment-request/#paymentrequestupdateevent-interface
  */
 
+dictionary PaymentDetailsUpdate : PaymentDetailsBase {
+  DOMString   error;
+  PaymentItem total;
+};
+
 [Constructor(DOMString type,
              optional PaymentRequestUpdateEventInit eventInitDict),
  SecureContext]
 interface PaymentRequestUpdateEvent : Event {
-  void updateWith(Promise<PaymentDetails> d);
+  void updateWith(Promise<PaymentDetailsUpdate> d);
 };
 
 dictionary PaymentRequestUpdateEventInit : EventInit {

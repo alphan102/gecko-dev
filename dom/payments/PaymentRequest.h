@@ -43,7 +43,7 @@ public:
   static already_AddRefed<PaymentRequest>
     Constructor(const GlobalObject& global,
                 const Sequence<PaymentMethodData>& methodData,
-                const PaymentDetails& details,
+                const PaymentDetailsInit& details,
                 const PaymentOptions& options,
                 ErrorResult& aRv)
   { return nullptr; }
