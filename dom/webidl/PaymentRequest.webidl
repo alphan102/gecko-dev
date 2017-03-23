@@ -67,8 +67,11 @@ dictionary PaymentOptions {
              optional PaymentOptions options),
  SecureContext]
 interface PaymentRequest : EventTarget {
+  [NewObject]
   Promise<PaymentResponse> show();
+  [NewObject]
   Promise<void>            abort();
+  [NewObject]
   Promise<boolean>         canMakePayment();
 
   readonly attribute DOMString            id;
