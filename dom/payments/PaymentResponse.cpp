@@ -20,16 +20,26 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PaymentResponse)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-PaymentResponse::PaymentResponse()
+PaymentResponse::PaymentResponse(nsPIDOMWindowInner* aWindow,
+                                 const nsAString& aRequestId,
+                                 const nsAString& aMethodName,
+                                 const nsAString& aShippingOption,
+                                 const nsAString& aPayerName,
+                                 const nsAString& aPayerEmail,
+                                 const nsAString& aPayerPhone)
+  : mOwner(aWindow)
+  , mCompleteCalled(false)
+  , mRequestId(aRequestId)
+  , mMethodName(aMethodName)
+  , mShippingOption(aShippingOption)
+  , mPayerName(aPayerName)
+  , mPayerEmail(aPayerEmail)
+  , mPayerPhone(aPayerPhone)
 {
-  // Add |MOZ_COUNT_CTOR(PaymentResponse);| for a non-refcounted object.
-
-  // [TODO] Assign |mOwner| for method |GetParentObject| to return
 }
 
 PaymentResponse::~PaymentResponse()
 {
-  // Add |MOZ_COUNT_DTOR(PaymentResponse);| for a non-refcounted object.
 }
 
 JSObject*
@@ -38,6 +48,80 @@ PaymentResponse::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
   return PaymentResponseBinding::Wrap(aCx, this, aGivenProto);
 }
 
+void
+PaymentResponse::GetRequestId(nsString& aRetVal) const
+{
+  aRetVal = mRequestId;
+}
+
+void
+PaymentResponse::GetMethodName(nsString& aRetVal) const
+{
+  aRetVal = mMethodName;
+}
+
+void
+PaymentResponse::GetShippingOption(nsString& aRetVal) const
+{
+  aRetVal = mShippingOption;
+}
+
+void
+PaymentResponse::GetPayerName(nsString& aRetVal) const
+{
+  aRetVal = mPayerName;
+}
+
+void PaymentResponse::GetPayerEmail(nsString& aRetVal) const
+{
+  aRetVal = mPayerEmail;
+}
+
+void PaymentResponse::GetPayerPhone(nsString& aRetVal) const
+{
+  aRetVal = mPayerPhone;
+}
+
+already_AddRefed<Promise>
+PaymentResponse::Complete(PaymentComplete result, ErrorResult& aRv)
+{
+  if (mCompleteCalled) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mOwner);
+  ErrorResult rv;
+  RefPtr<Promise> promise = Promise::Create(global, rv);
+  if (rv.Failed()) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  mCompleteCalled = true;
+
+/*	TODO : Need PaymentRequestManager support complete function
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  nsresult rv;
+  mResultPromise = promise;
+  rv = manager->Complete(mRequestIdi, result);
+  if (NS_FAILED(rv)) {
+    promise->MaybeReject(NS_ERROR_FAILURE);
+    return promise.forget();
+  }
+*/
+  mPromise = promise;
+  return promise.forget();
+}
+
+void
+PaymentResponse::RespondComplete()
+{
+  MOZ_ASSERT(!mPromise);
+
+  mPromise->MaybeResolve(JS::UndefinedHandleValue);
+  mPromise = nullptr;
+}
 
 } // namespace dom
 } // namespace mozilla

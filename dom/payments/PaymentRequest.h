@@ -60,9 +60,11 @@ public:
   already_AddRefed<Promise> Show(ErrorResult& aRv);
   void RespondShowPayment(bool aAccept,
                           const nsAString& aMethodName,
+                          JSObject* aDetails,
                           const nsAString& aPayerName,
                           const nsAString& aPayerEmail,
                           const nsAString& aPayerPhone);
+  void RespondComplete();
 
   already_AddRefed<Promise> Abort(ErrorResult& aRv);
   void RespondAbortPayment(bool aResult);
