@@ -898,6 +898,15 @@ private:
   virtual bool
   DeallocPWebBrowserPersistDocumentParent(PWebBrowserPersistDocumentParent* aActor) override;
 
+  virtual PPaymentRequestParent*
+  AllocPPaymentRequestParent() override;
+
+  virtual bool
+  DeallocPPaymentRequestParent(PPaymentRequestParent* aActor) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvPPaymentRequestConstructor(PPaymentRequestParent* aActor) override;
+
   virtual mozilla::ipc::IPCResult RecvReadPrefsArray(InfallibleTArray<PrefSetting>* aPrefs) override;
   virtual mozilla::ipc::IPCResult RecvGetGfxVars(InfallibleTArray<GfxVarUpdate>* aVars) override;
 

@@ -1,0 +1,50 @@
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsIVariant.idl"
+#include "nsIPaymentRequest.idl"
+#include "nsIPaymentRequestRequest.idl"
+#include "nsIPaymentRequestResponse.idl"
+#include "nsISimpleEnumerator.idl"
+
+/*
+ *  nsPaymentRequestService is used to manage the created PaymentRequest in the
+ *  chrome process. It is also the IPC agent for payment UI to communicate with
+ *  merchant side.
+ */
+[uuid(cccd665f-edf3-41fc-ab9b-fc55b37340aa)]
+interface nsIPaymentRequestService : nsISupports
+{
+  nsIPaymentRequest getPaymentRequestById(in AString requestId);
+  nsISimpleEnumerator enumerate();
+
+  /*
+   *  requestPayment is used to handle the asked action request of the payment
+   *  from content process.
+   */
+  void requestPayment(in nsIPaymentRequestRequest aRequest);
+
+  /*
+   *  respondPayment is used for payment UI to respond the asked action result.
+   */
+  void respondPayment(in nsIPaymentRequestResponse aResponse);
+
+
+  /*
+   *  These methods are used for payment UI to inform merchant the shipping
+   *  address/option change.
+   *  TODO: Adding nsIPaymentAddress as an input parameter.
+   */
+  void changeShippingAddress(in AString requestId);
+  void changeShippingOption(in AString requestId, in AString option);
+};
+
+%{C++
+#define NS_PAYMENT_REQUEST_SERVICE_CID \
+  { 0xcccd665f, 0xedf3, 0x41fc, { 0xab, 0x9b, 0xfc, 0x55, 0xb3, 0x73, 0x40, 0xaa } }
+#define NS_PAYMENT_REQUEST_SERVICE_CONTRACT_ID \
+  "@mozilla.org/dom/payments/payment-request-service;1"
+%}

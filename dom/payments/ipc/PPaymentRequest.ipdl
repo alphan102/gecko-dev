@@ -1,0 +1,159 @@
+/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
+/* vim: set sw=4 ts=8 et tw=80 ft=cpp : */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+include protocol PContent;
+
+using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
+
+namespace mozilla {
+namespace dom {
+
+struct IPCPaymentMethodData
+{
+  nsString[] supportedMethods;
+  nsString data;
+};
+
+struct IPCPaymentCurrencyAmount
+{
+  nsString currency;
+  nsString value;
+};
+
+struct IPCPaymentItem
+{
+  nsString label;
+  IPCPaymentCurrencyAmount amount;
+  bool pending;
+};
+
+struct IPCPaymentDetailsModifier
+{
+  nsString[] supportedMethods;
+  IPCPaymentItem total;
+  IPCPaymentItem[] additionalDisplayItems;
+  nsString data;
+};
+
+struct IPCPaymentShippingOption
+{
+  nsString id;
+  nsString label;
+  IPCPaymentCurrencyAmount amount;
+  bool selected;
+};
+
+struct IPCPaymentDetails
+{
+  nsString id;
+  IPCPaymentItem total;
+  IPCPaymentItem[] displayItems;
+  IPCPaymentShippingOption[] shippingOptions;
+  IPCPaymentDetailsModifier[] modifiers;
+  nsString error;
+};
+
+struct IPCPaymentOptions
+{
+  bool requestPayerName;
+  bool requestPayerEmail;
+  bool requestPayerPhone;
+  bool requestShipping;
+  nsString shippingType;
+};
+
+struct PaymentRequestCreateRequest
+{
+  TabId tabId;
+  nsString requestId;
+  IPCPaymentMethodData[] methodData;
+  IPCPaymentDetails details;
+  IPCPaymentOptions options;
+};
+
+struct PaymentRequestShowRequest
+{
+  nsString requestId;
+};
+
+struct PaymentRequestAbortRequest
+{
+  nsString requestId;
+};
+
+struct PaymentRequestCanMakeRequest
+{
+  nsString requestId;
+};
+
+struct PaymentRequestUpdateRequest
+{
+  nsString requestId;
+  IPCPaymentDetails details;
+};
+
+union PaymentRequestRequest
+{
+  PaymentRequestCreateRequest;
+  PaymentRequestShowRequest;
+  PaymentRequestAbortRequest;
+  PaymentRequestCanMakeRequest;
+  PaymentRequestUpdateRequest;
+};
+
+struct PaymentRequestCanMakeResponse
+{
+  nsString requestId;
+  bool result;
+};
+
+struct PaymentRequestAbortResponse
+{
+  nsString requestId;
+  bool success;
+};
+
+struct PaymentRequestShowResponse
+{
+  nsString requestId;
+  bool     accept;
+  nsString methodName;
+  nsString data;
+  nsString payerName;
+  nsString payerEmail;
+  nsString payerPhone;
+};
+
+union PaymentRequestResponse
+{
+  PaymentRequestCanMakeResponse;
+  PaymentRequestAbortResponse;
+  PaymentRequestShowResponse;
+};
+
+sync protocol PPaymentRequest
+{
+  manager PContent;
+
+parent:
+  async __delete__();
+
+  async RequestPayment(PaymentRequestRequest request);
+
+child:
+  async RespondPayment(PaymentRequestResponse response);
+
+  /*
+   *  TODO: Add IPCPaymentAddress as a parameter for ChangeShippingAddress.
+   */
+  async ChangeShippingAddress(nsString requestId);
+
+  async ChangeShippingOption(nsString requestId,
+                             nsString option);
+};
+
+} // end of namespace dom
+} // end of namespace mozilla
