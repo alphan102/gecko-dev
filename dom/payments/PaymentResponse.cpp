@@ -36,6 +36,10 @@ PaymentResponse::PaymentResponse(nsPIDOMWindowInner* aWindow,
   , mPayerEmail(aPayerEmail)
   , mPayerPhone(aPayerPhone)
 {
+
+  // TODO: from https://github.com/w3c/browser-payment-api/issues/480
+  // Add payerGivenName + payerFamilyName to PaymentAddress
+
 }
 
 PaymentResponse::~PaymentResponse()
