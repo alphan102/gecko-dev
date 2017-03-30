@@ -44,6 +44,7 @@ include protocol PURLClassifier;
 include protocol PVRManager;
 include protocol PVideoDecoderManager;
 include protocol PFlyWebPublishedServer;
+include protocol PPaymentRequest;
 include DOMTypes;
 include JavaScriptTypes;
 include InputStreamParams;
@@ -376,6 +377,7 @@ nested(upto inside_cpow) sync protocol PContent
     manages PPresentation;
     manages PFlyWebPublishedServer;
     manages PURLClassifier;
+    manages PPaymentRequest;
 
 both:
     // Depending on exactly how the new browser is being created, it might be
@@ -799,6 +801,8 @@ parent:
     async PWebrtcGlobal();
 
     async PPresentation();
+
+    async PPaymentRequest();
 
     async PFlyWebPublishedServer(nsString name, FlyWebPublishOptions params);
 

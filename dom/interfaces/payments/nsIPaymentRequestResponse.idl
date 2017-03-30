@@ -1,0 +1,127 @@
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsIVariant.idl"
+
+[scriptable, uuid(a607c095-ef60-4a9b-a3d0-0506c60728b3)]
+interface nsIPaymentRequestResponse : nsISupports
+{
+  /*
+   *  No type 1 and 5 to align nsIPaymentRequestRequest types,
+   *  where 1 is for payment request creation and 5 for update.
+   *  Both requests expect no response from UI module.
+   */
+  const uint32_t NO_TYPE = 0;
+  const uint32_t CANMAKE_RESPONSE = 2;
+  const uint32_t ABORT_RESPONSE = 3;
+  const uint32_t SHOW_RESPONSE = 4;
+
+  /*
+   *  The payment request identity.
+   */
+  readonly attribute AString requestId;
+
+  /*
+   *  The response type.
+   */
+  readonly attribute uint32_t type;
+};
+
+[scriptable, uuid(52fc3f9f-c0cb-4874-b3d4-ee4b6e9cbe9c)]
+interface nsIPaymentRequestCanMakeResponse : nsIPaymentRequestResponse
+{
+  /*
+   *  The result of CanMake task.
+   */
+  readonly attribute bool result;
+
+  /*
+   *  Initialize function of this response.
+   */
+  void init(in AString aRequestId, in bool aResult);
+};
+
+[scriptable, uuid(8c72bcdb-0c37-4786-a9e5-510afa2f8ede)]
+interface nsIPaymentRequestAbortResponse : nsIPaymentRequestResponse
+{
+  /*
+   *  Success or not for abort task.
+   */
+  readonly attribute bool success;
+
+  /*
+   *  Initialize function of this response.
+   */
+  void init(in AString aRequestId, in bool aSuccess);
+};
+
+[scriptable, uuid(184385cb-2d35-4b99-a9a3-7c780bf66b9b)]
+interface nsIPaymentRequestShowResponse : nsIPaymentRequestResponse
+{
+  /*
+   *  Accept or not for the payment.
+   */
+  readonly attribute bool accept;
+
+  /*
+   *  The decided payment method name.
+   */
+  readonly attribute AString methodName;
+
+  /*
+   *  The data needed by the payment method. (it must be serializable)
+   */
+  readonly attribute AString data;
+
+  /*
+   *  The payer name information.
+   */
+  readonly attribute AString payerName;
+
+  /*
+   *  The payer email information.
+   */
+  readonly attribute AString payerEmail;
+
+  /*
+   *  The payer phone information.
+   */
+  readonly attribute AString payerPhone;
+
+  /*
+   *  Initialize function for this response.
+   */
+  void init(in AString aRequestId,
+            in bool aAccept,
+            in AString aMethodName,
+            in AString aData,
+            in AString aPayerName,
+            in AString aPayerEmail,
+            in AString aPayerPhone);
+};
+
+[uuid(3fef5459-b0ea-469b-be9f-b99e8ca75d3d)]
+interface nsIPaymentRequestCallback : nsISupports
+{
+  void respondPayment(in nsIPaymentRequestResponse aResponse);
+};
+
+%{C++
+#define NS_PAYMENT_REQUEST_CANMAKE_RESPONSE_CID \
+  { 0x52fc3f9f, 0xc0cb, 0x4874, { 0xb3, 0xd4, 0xee, 0x4b, 0x6e, 0x9c, 0xbe, 0x9c } }
+#define NS_PAYMENT_REQUEST_CANMAKE_RESPONSE_CONTRACT_ID \
+  "@mozilla.org/dom/payments/payment-request-canmake-response;1"
+
+#define NS_PAYMENT_REQUEST_ABORT_RESPONSE_CID \
+  { 0x8c72bcdb, 0x0c37, 0x4786, { 0xa9, 0xe5, 0x51, 0x0a, 0xfa, 0x2f, 0x8e, 0xde } }
+#define NS_PAYMENT_REQUEST_ABORT_RESPONSE_CONTRACT_ID \
+  "@mozilla.org/dom/payments/payment-request-abort-response;1"
+
+#define NS_PAYMENT_REQUEST_SHOW_RESPONSE_CID \
+  { 0x184385cb, 0x2d35, 0x4b99, { 0xa9, 0xa3, 0x7c, 0x78, 0x0b, 0xf6, 0x6b, 0x9b } }
+#define NS_PAYMENT_REQUEST_SHOW_RESPONSE_CONTRACT_ID \
+  "@mozilla.org/dom/payments/payment-request-show-response;1"
+%}

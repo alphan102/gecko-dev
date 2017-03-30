@@ -4,7 +4,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+EXPORTS += [
+    'nsPaymentRequest.h',
+    'nsPaymentRequestRequest.h',
+    'nsPaymentRequestResponse.h',
+    'nsPaymentRequestService.h',
+]
+
 EXPORTS.mozilla.dom += [
+    'ipc/PaymentRequestChild.h',
+    'ipc/PaymentRequestParent.h',
     'PaymentAddress.h',
     'PaymentRequest.h',
     'PaymentRequestUpdateEvent.h',
@@ -12,10 +21,22 @@ EXPORTS.mozilla.dom += [
 ]
 
 UNIFIED_SOURCES += [
+    'ipc/PaymentRequestChild.cpp',
+    'ipc/PaymentRequestParent.cpp',
+    'nsPaymentRequest.cpp',
+    'nsPaymentRequestRequest.cpp',
+    'nsPaymentRequestResponse.cpp',
+    'nsPaymentRequestService.cpp',
     'PaymentAddress.cpp',
     'PaymentRequest.cpp',
+    'PaymentRequestManager.cpp',
+    'PaymentRequestModule.cpp',
     'PaymentRequestUpdateEvent.cpp',
     'PaymentResponse.cpp',
+]
+
+IPDL_SOURCES += [
+    'ipc/PPaymentRequest.ipdl',
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')

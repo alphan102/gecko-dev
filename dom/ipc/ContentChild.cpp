@@ -176,6 +176,7 @@
 
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/devicestorage/DeviceStorageRequestChild.h"
+#include "mozilla/dom/PPaymentRequestChild.h"
 #include "mozilla/dom/PPresentationChild.h"
 #include "mozilla/dom/PresentationIPCService.h"
 #include "mozilla/ipc/InputStreamUtils.h"
@@ -1623,6 +1624,20 @@ bool
 ContentChild::DeallocPCrashReporterChild(PCrashReporterChild* crashreporter)
 {
   delete crashreporter;
+  return true;
+}
+
+PPaymentRequestChild*
+ContentChild::AllocPPaymentRequestChild()
+{
+  MOZ_CRASH("We should never be manually allocating PPaymentRequestChild actors");
+  return nullptr;
+}
+
+bool
+ContentChild::DeallocPPaymentRequestChild(PPaymentRequestChild* aActor)
+{
+  delete aActor;
   return true;
 }
 

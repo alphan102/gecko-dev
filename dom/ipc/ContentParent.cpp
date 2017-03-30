@@ -59,6 +59,7 @@
 #include "mozilla/dom/PPresentationParent.h"
 #include "mozilla/dom/PushNotifier.h"
 #include "mozilla/dom/FlyWebPublishedServerIPC.h"
+#include "mozilla/dom/PaymentRequestParent.h"
 #include "mozilla/dom/quota/QuotaManagerService.h"
 #include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/dom/URLClassifierParent.h"
@@ -3210,6 +3211,27 @@ ContentParent::RecvPSpeechSynthesisConstructor(PSpeechSynthesisParent* aActor)
 #else
   return IPC_FAIL_NO_REASON(this);
 #endif
+}
+
+PPaymentRequestParent*
+ContentParent::AllocPPaymentRequestParent()
+{
+  RefPtr<PaymentRequestParent> actor = new PaymentRequestParent();
+  return actor.forget().take();
+}
+
+bool
+ContentParent::DeallocPPaymentRequestParent(PPaymentRequestParent* aActor)
+{
+  RefPtr<PaymentRequestParent> actor =
+    dont_AddRef(static_cast<PaymentRequestParent*>(aActor));
+  return true;
+}
+
+mozilla::ipc::IPCResult
+ContentParent::RecvPPaymentRequestConstructor(PPaymentRequestParent* aActor)
+{
+  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult

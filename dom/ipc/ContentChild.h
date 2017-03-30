@@ -329,6 +329,9 @@ public:
 
   virtual bool DeallocPRemoteSpellcheckEngineChild(PRemoteSpellcheckEngineChild*) override;
 
+  virtual PPaymentRequestChild* AllocPPaymentRequestChild() override;
+  virtual bool DeallocPPaymentRequestChild(PPaymentRequestChild*) override;
+
   virtual mozilla::ipc::IPCResult RecvSetOffline(const bool& offline) override;
 
   virtual mozilla::ipc::IPCResult RecvSetConnectivity(const bool& connectivity) override;
