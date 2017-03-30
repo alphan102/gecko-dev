@@ -7,6 +7,7 @@
 #include "mozilla/dom/PaymentRequest.h"
 #include "mozilla/dom/PaymentResponse.h"
 #include "nsContentUtils.h"
+#include "PaymentRequestManager.h"
 
 namespace mozilla {
 namespace dom {
@@ -118,10 +119,13 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
     }
   }
 
-  // TODO : Use PaymentRequestManager::CreatePayment to create PaymentRequest
-  // Need Bug 1345390 to complete the functionality.
-  // We also set mId in "CreatePayment()"
-  return nullptr;
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+
+  // Create PaymentRequest and set its |mId|
+  RefPtr<PaymentRequest> request;
+  nsresult rv = manager->CreatePayment(window, aMethodData, aDetails, aOptions, getter_AddRefs(request));
+
+  return NS_FAILED(rv) ? nullptr : request.forget();
 }
 
 PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)
@@ -148,12 +152,42 @@ PaymentRequest::Show(ErrorResult& aRv)
 void
 PaymentRequest::RespondCanMakePayment(bool aResult)
 {
+  MOZ_ASSERT(!mResultPromise);
+
+  mResultPromise->MaybeResolve(aResult);
+  mResultPromise = nullptr;
 }
 
 already_AddRefed<Promise>
 PaymentRequest::CanMakePayment(ErrorResult& aRv)
 {
-  return nullptr;
+  if (mState != eCreated) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return nullptr;
+  }
+
+  if (mResultPromise) {
+    aRv.Throw(NS_ERROR_DOM_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
+  ErrorResult result;
+  RefPtr<Promise> promise = Promise::Create(global, result);
+  if (result.Failed()) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  nsresult rv = manager->CanMakePayment(mInternalId);
+  if (NS_FAILED(rv)) {
+    promise->MaybeReject(NS_ERROR_FAILURE);
+    return promise.forget();
+  }
+
+  mResultPromise = promise;
+  return promise.forget();
 }
 
 already_AddRefed<Promise>
