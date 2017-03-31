@@ -19,6 +19,12 @@ interface nsIPaymentRequestResponse : nsISupports
   const uint32_t ABORT_RESPONSE = 3;
   const uint32_t SHOW_RESPONSE = 4;
 
+  const uint32_t ABORT_SUCCEEDED = 1;
+  const uint32_t ABORT_FAILED = 0;
+
+  const uint32_t PAYMENT_ACCEPTED = 1;
+  const uint32_t PAYMENT_REJECTED = 0;
+
   /*
    *  The payment request identity.
    */
@@ -48,23 +54,28 @@ interface nsIPaymentRequestCanMakeResponse : nsIPaymentRequestResponse
 interface nsIPaymentRequestAbortResponse : nsIPaymentRequestResponse
 {
   /*
-   *  Success or not for abort task.
+   *  The abort task status.
    */
-  readonly attribute bool success;
+  readonly attribute uint32_t abortStatus;
 
   /*
    *  Initialize function of this response.
    */
-  void init(in AString aRequestId, in bool aSuccess);
+  void init(in AString aRequestId, in uint32_t aAbortStatus);
+
+  /*
+   *  Check if the abort task is succeeded
+   */
+  bool isSucceeded();
 };
 
 [scriptable, uuid(184385cb-2d35-4b99-a9a3-7c780bf66b9b)]
 interface nsIPaymentRequestShowResponse : nsIPaymentRequestResponse
 {
   /*
-   *  Accept or not for the payment.
+   *  Accpet status of the payment.
    */
-  readonly attribute bool accept;
+  readonly attribute uint32_t acceptStatus;
 
   /*
    *  The decided payment method name.
@@ -95,12 +106,17 @@ interface nsIPaymentRequestShowResponse : nsIPaymentRequestResponse
    *  Initialize function for this response.
    */
   void init(in AString aRequestId,
-            in bool aAccept,
+            in uint32_t aAcceptStatus,
             in AString aMethodName,
             in AString aData,
             in AString aPayerName,
             in AString aPayerEmail,
             in AString aPayerPhone);
+
+  /*
+   *  Check if the payment is accpeted
+   */
+  bool isAccepted();
 };
 
 [uuid(3fef5459-b0ea-469b-be9f-b99e8ca75d3d)]

@@ -58,7 +58,7 @@ public:
 protected:
   ~nsPaymentRequestAbortResponse();
 
-  bool mSuccess;
+  uint32_t mAbortStatus;
 };
 
 class nsPaymentRequestShowResponse final : public nsIPaymentRequestShowResponse
@@ -73,7 +73,7 @@ public:
 protected:
   ~nsPaymentRequestShowResponse();
 
-  bool mAccept;
+  uint32_t mAcceptStatus;
   nsString mMethodName;
   nsString mData;
   nsString mPayerName;

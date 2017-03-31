@@ -64,13 +64,26 @@ PaymentRequestParent::RecvRequestPayment(const PaymentRequestRequest& aRequest)
       nsrequest = do_QueryInterface(createRequest);
       break;
     }
-    case PaymentRequestRequest::TPaymentRequestCanMakeRequest:
-    case PaymentRequestRequest::TPaymentRequestShowRequest:
-    case PaymentRequestRequest::TPaymentRequestAbortRequest:
+    case PaymentRequestRequest::TPaymentRequestCanMakeRequest: {
+      PaymentRequestCanMakeRequest request = aRequest;
+      nsrequest = do_CreateInstance(NS_PAYMENT_REQUEST_REQUEST_CONTRACT_ID);
+      nsrequest->Init(request.requestId(),
+                      nsIPaymentRequestRequest::CANMAKE_REQUEST,
+		      callback);
+      break;
+    }
+    case PaymentRequestRequest::TPaymentRequestShowRequest: {
+      return IPC_FAIL(this, "Not yet implemented");
+    }
+    case PaymentRequestRequest::TPaymentRequestAbortRequest: {
+      PaymentRequestAbortRequest request = aRequest;
+      nsrequest = do_CreateInstance(NS_PAYMENT_REQUEST_REQUEST_CONTRACT_ID);
+      nsrequest->Init(request.requestId(),
+                      nsIPaymentRequestRequest::ABORT_REQUEST,
+		      callback);
+      break;
+    }
     case PaymentRequestRequest::TPaymentRequestUpdateRequest: {
-      /*
-       *  TODO: Convert PaymentRequestRequest to nsIPaymentRequestRequest.
-       */
       return IPC_FAIL(this, "Not yet implemented");
     }
     default: {
@@ -110,20 +123,36 @@ PaymentRequestParent::RespondPayment(nsIPaymentRequestResponse* aResponse)
   nsString requestId;
   aResponse->GetRequestId(requestId);
   switch (type) {
-    case nsIPaymentRequestResponse::CANMAKE_RESPONSE:
-    case nsIPaymentRequestResponse::ABORT_RESPONSE:
+    case nsIPaymentRequestResponse::CANMAKE_RESPONSE: {
+      nsCOMPtr<nsIPaymentRequestCanMakeResponse> nsresponse =
+        do_QueryInterface(aResponse);
+      bool result;
+      nsresponse->GetResult(&result);
+      PaymentRequestCanMakeResponse response(requestId, result);
+      if (!SendRespondPayment(response)) {
+	return NS_ERROR_FAILURE;
+      }
+      break;
+    }
+    case nsIPaymentRequestResponse::ABORT_RESPONSE: {
+      nsCOMPtr<nsIPaymentRequestAbortResponse> nsresponse =
+        do_QueryInterface(aResponse);
+      bool isSucceeded;
+      nsresponse->IsSucceeded(&isSucceeded);
+      PaymentRequestAbortResponse response(requestId, isSucceeded);
+      if (!SendRespondPayment(response)) {
+	return NS_ERROR_FAILURE;
+      }
+      break;
+    }
     case nsIPaymentRequestResponse::SHOW_RESPONSE: {
-      /*
-       *  TODO: Convert nsIPaymentRequestResponse to PaymentRequestResponse, then
-       *        call SendRespondPayment to pass the task result to content process
-       */
       break;
     }
     default: {
       break;
     }
   }
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 } // end of namespace dom
 } // end of namespace mozilla

@@ -332,11 +332,20 @@ PaymentRequestManager::ShowPayment(const nsAString& aRequestId)
 nsresult
 PaymentRequestManager::AbortPayment(const nsAString& aRequestId)
 {
-  /*
-   *  TODO: Create and initialize a PaymentRequestAbortRequest, then send the
-   *        request to chrome process by gPaymentRequestChild
-   */
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!gPaymentRequestChild) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (!request) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsString requestId;
+  request->GetInternalId(requestId);
+  PaymentRequestAbortRequest paymentAction(requestId);
+  gPaymentRequestChild->SendRequestPayment(paymentAction);
+  return NS_OK;
 }
 
 nsresult
@@ -380,6 +389,15 @@ PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
         return NS_ERROR_FAILURE;
       }
       request->RespondCanMakePayment(response.result());
+      break;
+    }
+    case PaymentRequestResponse::TPaymentRequestAbortResponse: {
+      PaymentRequestAbortResponse response = aResponse;
+      RefPtr<PaymentRequest> request = GetPaymentRequestById(response.requestId());
+      if (!request) {
+        return NS_ERROR_FAILURE;
+      }
+      request->RespondAbortPayment(response.success());
       break;
     }
     /*

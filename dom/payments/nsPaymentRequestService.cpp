@@ -115,7 +115,20 @@ nsPaymentRequestService::RequestPayment(nsIPaymentRequestRequest* aRequest)
       RespondPayment(response);
       break;
     }
-    case nsIPaymentRequestRequest::ABORT_REQUEST:
+    case nsIPaymentRequestRequest::ABORT_REQUEST: {
+      /*
+       *  TODO: Launch/inform payment UI here once the UI module is implemented.
+       *  Currently we always return true for testing. This code should be
+       *  removed once the UI module is implemented.
+       */
+      nsString requestId;
+      payment->GetRequestId(requestId);
+      nsCOMPtr<nsIPaymentRequestAbortResponse> response =
+        do_CreateInstance(NS_PAYMENT_REQUEST_ABORT_RESPONSE_CONTRACT_ID);
+      response->Init(requestId, nsIPaymentRequestResponse::ABORT_SUCCEEDED);
+      RespondPayment(response);
+      break;
+    }
     case nsIPaymentRequestRequest::SHOW_REQUEST: {
       /*
        *  TODO: Launch/inform payment UI here once the UI module is implemented.
@@ -149,7 +162,16 @@ nsPaymentRequestService::RespondPayment(nsIPaymentRequestResponse* aResponse)
   uint32_t type;
   aResponse->GetType(&type);
   switch (type) {
-    case nsIPaymentRequestResponse::ABORT_RESPONSE:
+    case nsIPaymentRequestResponse::ABORT_RESPONSE: {
+     bool isSucceeded;
+     nsCOMPtr<nsIPaymentRequestAbortResponse> response = do_QueryInterface(aResponse);
+     response->IsSucceeded(&isSucceeded);
+     if (isSucceeded) {
+       request->SetCallback(nullptr);
+       mRequestQueue.RemoveElement(request);
+     }
+     break;
+    }
     case nsIPaymentRequestResponse::SHOW_RESPONSE:
     {
       mRequestQueue.RemoveElement(request);
