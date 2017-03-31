@@ -146,16 +146,58 @@ PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)
 already_AddRefed<Promise>
 PaymentRequest::Show(ErrorResult& aRv)
 {
-  return nullptr;
+  if (mState != eCreated) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
+  ErrorResult result;
+  RefPtr<Promise> promise = Promise::Create(global, result);
+  if (result.Failed()) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  nsresult rv = manager->ShowPayment(mInternalId);
+  if (NS_FAILED(rv)) {
+    promise->MaybeReject(NS_ERROR_FAILURE);
+    return promise.forget();
+  }
+
+  mAcceptPromise = promise;
+  mState = eInteractive;
+  return promise.forget();
 }
 
 void
-PaymentRequest::RespondCanMakePayment(bool aResult)
+PaymentRequest::RespondShowPayment(bool aAccept,
+                                   const nsAString& aMethodName,
+                                   JSObject* aDetails,
+                                   const nsAString& aPayerName,
+                                   const nsAString& aPayerEmail,
+                                   const nsAString& aPayerPhone)
 {
-  MOZ_ASSERT(!mResultPromise);
+  MOZ_ASSERT(!mAcceptPromise);
 
-  mResultPromise->MaybeResolve(aResult);
-  mResultPromise = nullptr;
+  // TODO : need to add aDetails into paymentResponse
+  // TODO : need to add shipping option, hard-code "AIR" here
+  RefPtr<PaymentResponse> paymentResponse =
+    new PaymentResponse(mWindow, mId, aMethodName, NS_LITERAL_STRING("AIR"),
+                        aPayerName, aPayerEmail, aPayerPhone);
+  mResponse = paymentResponse;
+  mAcceptPromise->MaybeResolve(paymentResponse);
+  mState = eClosed;
+  mAcceptPromise = nullptr;
+}
+
+void
+PaymentRequest::RespondComplete()
+{
+  MOZ_ASSERT(!mResponse);
+
+  mResponse->RespondComplete();
 }
 
 already_AddRefed<Promise>
@@ -190,24 +232,60 @@ PaymentRequest::CanMakePayment(ErrorResult& aRv)
   return promise.forget();
 }
 
+void
+PaymentRequest::RespondCanMakePayment(bool aResult)
+{
+  MOZ_ASSERT(!mResultPromise);
+
+  mResultPromise->MaybeResolve(aResult);
+  mResultPromise = nullptr;
+}
+
 already_AddRefed<Promise>
 PaymentRequest::Abort(ErrorResult& aRv)
 {
-  return nullptr;
+  if (mState != eInteractive) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return nullptr;
+  }
+
+  if (mAbortPromise) {
+    aRv.Throw(NS_ERROR_DOM_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
+  ErrorResult result;
+  RefPtr<Promise> promise = Promise::Create(global, result);
+  if (result.Failed()) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  nsresult rv = manager->AbortPayment(mInternalId);
+  if (NS_FAILED(rv)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  mAbortPromise = promise;
+  return promise.forget();
 }
 
 void
 PaymentRequest::RespondAbortPayment(bool aSuccess)
 {
-}
+  MOZ_ASSERT(!mAbortPromise);
 
-void
-PaymentRequest::RespondShowPayment(bool aAccept,
-                                   const nsAString& aMethodName,
-                                   const nsAString& aPayerName,
-                                   const nsAString& aPayerEmail,
-                                   const nsAString& aPayerPhone)
-{
+  if (aSuccess) {
+    mAbortPromise->MaybeResolve(JS::UndefinedHandleValue);
+    mState = eClosed;
+  } else {
+    mAbortPromise->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
+  }
+
+  mAbortPromise = nullptr;
 }
 
 void

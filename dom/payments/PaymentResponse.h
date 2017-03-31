@@ -30,7 +30,13 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(PaymentResponse)
 
-  PaymentResponse();
+  PaymentResponse(nsPIDOMWindowInner* aWindow,
+                  const nsAString& aRequestId,
+                  const nsAString& aMethodName,
+                  const nsAString& aShippingOption,
+                  const nsAString& aPayerName,
+                  const nsAString& aPayerEmail,
+                  const nsAString& aPayerPhone);
 
   nsPIDOMWindowInner* GetParentObject() const
   {
@@ -40,33 +46,46 @@ public:
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
 
-  void GetRequestId(nsString& aRetVal) const { }
+  void GetRequestId(nsString& aRetVal) const;
 
-  void GetMethodName(nsString& aRetVal) const { }
+  void GetMethodName(nsString& aRetVal) const;
 
-  void GetDetails(JSContext* cx, JS::MutableHandle<JSObject*> aRetVal) const { }
+  // TODO:
+  //void GetDetails(JSContext* cx, JS::MutableHandle<JSObject*> aRetVal) const { }
+
+  // TODO:
+  // Return a raw pointer here to avoid refcounting, but make sure it's safe
+  // (the object should be kept alive by the callee).
+  //already_AddRefed<PaymentAddress> GetShippingAddress() const { return nullptr; }
+
+  void GetShippingOption(nsString& aRetVal) const;
+
+  void GetPayerName(nsString& aRetVal) const;
+
+  void GetPayerEmail(nsString& aRetVal) const;
+
+  void GetPayerPhone(nsString& aRetVal) const;
 
   // Return a raw pointer here to avoid refcounting, but make sure it's safe
   // (the object should be kept alive by the callee).
-  already_AddRefed<PaymentAddress> GetShippingAddress() const { return nullptr; }
+  already_AddRefed<Promise> Complete(PaymentComplete result, ErrorResult& aRv);
 
-  void GetShippingOption(nsString& aRetVal) const { }
-
-  void GetPayerName(nsString& aRetVal) const { }
-
-  void GetPayerEmail(nsString& aRetVal) const { }
-
-  void GetPayerPhone(nsString& aRetVal) const { }
-
-  // Return a raw pointer here to avoid refcounting, but make sure it's safe
-  // (the object should be kept alive by the callee).
-  already_AddRefed<Promise> Complete(PaymentComplete result) { return nullptr; }
+  void RespondComplete();
 
 protected:
   ~PaymentResponse();
 
 private:
   nsCOMPtr<nsPIDOMWindowInner> mOwner;
+  bool mCompleteCalled;
+  nsString mRequestId;
+  nsString mMethodName;
+  nsString mShippingOption;
+  nsString mPayerName;
+  nsString mPayerEmail;
+  nsString mPayerPhone;
+  // Promise for "PaymentResponse::Complete"
+  RefPtr<Promise> mPromise;
 };
 
 } // namespace dom

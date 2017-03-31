@@ -21,12 +21,13 @@ interface PaymentResponse {
 
   readonly attribute DOMString       requestId;
   readonly attribute DOMString       methodName;
-  readonly attribute object          details;
-  readonly attribute PaymentAddress? shippingAddress;
+  //readonly attribute object          details;
+  //readonly attribute PaymentAddress? shippingAddress;
   readonly attribute DOMString?      shippingOption;
   readonly attribute DOMString?      payerName;
   readonly attribute DOMString?      payerEmail;
   readonly attribute DOMString?      payerPhone;
 
+  [NewObject]
   Promise<void> complete(optional PaymentComplete result = "unknown");
 };
