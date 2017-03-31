@@ -84,17 +84,25 @@ nsPaymentRequestAbortResponse::~nsPaymentRequestAbortResponse()
 }
 
 NS_IMETHODIMP
-nsPaymentRequestAbortResponse::GetSuccess(bool* aSuccess)
+nsPaymentRequestAbortResponse::GetAbortStatus(uint32_t* aAbortStatus)
 {
-  *aSuccess = mSuccess;
+  *aAbortStatus = mAbortStatus;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsPaymentRequestAbortResponse::Init(const nsAString& aRequestId, const bool aSuccess)
+nsPaymentRequestAbortResponse::Init(const nsAString& aRequestId,
+                                    const uint32_t aAbortStatus)
 {
   mRequestId = aRequestId;
-  mSuccess = aSuccess;
+  mAbortStatus = aAbortStatus;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsPaymentRequestAbortResponse::IsSucceeded(bool* aIsSucceeded)
+{
+  *aIsSucceeded = (mAbortStatus == nsIPaymentRequestResponse::ABORT_SUCCEEDED);
   return NS_OK;
 }
 
@@ -114,9 +122,9 @@ nsPaymentRequestShowResponse::~nsPaymentRequestShowResponse()
 }
 
 NS_IMETHODIMP
-nsPaymentRequestShowResponse::GetAccept(bool* aAccept)
+nsPaymentRequestShowResponse::GetAcceptStatus(uint32_t* aAcceptStatus)
 {
-  *aAccept = mAccept;
+  *aAcceptStatus = mAcceptStatus;
   return NS_OK;
 }
 
@@ -157,7 +165,7 @@ nsPaymentRequestShowResponse::GetPayerPhone(nsAString& aPayerPhone)
 
 NS_IMETHODIMP
 nsPaymentRequestShowResponse::Init(const nsAString& aRequestId,
-                                   const bool aAccept,
+                                   const uint32_t aAcceptStatus,
                                    const nsAString& aMethodName,
                                    const nsAString& aData,
                                    const nsAString& aPayerName,
@@ -165,12 +173,19 @@ nsPaymentRequestShowResponse::Init(const nsAString& aRequestId,
                                    const nsAString& aPayerPhone)
 {
   mRequestId = aRequestId;
-  mAccept = aAccept;
+  mAcceptStatus = aAcceptStatus;
   mMethodName = aMethodName;
   mData = aData;
   mPayerName = aPayerName;
   mPayerEmail = aPayerEmail;
   mPayerPhone = aPayerPhone;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsPaymentRequestShowResponse::IsAccepted(bool* aIsAccepted)
+{
+  *aIsAccepted = (mAcceptStatus == nsIPaymentRequestResponse::PAYMENT_ACCEPTED);
   return NS_OK;
 }
 
