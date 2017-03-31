@@ -98,7 +98,23 @@ nsPaymentRequestService::RequestPayment(nsIPaymentRequestRequest* aRequest)
       mRequestQueue.AppendElement(payment);
       break;
     }
-    case nsIPaymentRequestRequest::CANMAKE_REQUEST:
+    case nsIPaymentRequestRequest::CANMAKE_REQUEST: {
+      /*
+       *  TODO: 1. Check basic card support once the Basic Card Payment spec is
+       *           implemented.
+       *        2. Check third party payment app support by traversing all
+       *           registered third party payment apps.
+       *  Currently we always return true for testing. Once above TODO are
+       *  implemented, this code should be removed.
+       */
+      nsString requestId;
+      payment->GetRequestId(requestId);
+      nsCOMPtr<nsIPaymentRequestCanMakeResponse> response =
+        do_CreateInstance(NS_PAYMENT_REQUEST_CANMAKE_RESPONSE_CONTRACT_ID);;
+      response->Init(requestId, true);
+      RespondPayment(response);
+      break;
+    }
     case nsIPaymentRequestRequest::ABORT_REQUEST:
     case nsIPaymentRequestRequest::SHOW_REQUEST: {
       /*

@@ -251,7 +251,7 @@ PaymentRequestManager::GetPaymentRequestById(const nsAString& aRequestId)
 {
   for (const RefPtr<PaymentRequest>& request : mRequestQueue) {
     nsString requestId;
-    request->GetId(requestId);
+    request->GetInternalId(requestId);
     if (aRequestId == requestId) {
       RefPtr<PaymentRequest> paymentRequest = request;
       return paymentRequest.forget();
@@ -293,15 +293,20 @@ PaymentRequestManager::CreatePayment(nsPIDOMWindowInner* aWindow,
 
   IPCPaymentOptions options = ConvertOptions(aOptions);
 
-  /*
-   *  TODO: Call PaymentRequest constructor here and initialize the created
-   *        PaymentRequest.
-   */
-
+  RefPtr<PaymentRequest> paymentRequest = new PaymentRequest(aWindow);
   nsString requestId;
+  paymentRequest->GetInternalId(requestId);
+
   /*
-   *  TODO: Get the requestId from the created PaymentRequest
+   *  Set request's |mId| to details.id if details.id exists.
+   *  Otherwise, set |mId| to internal id.
    */
+  if (aDetails.mId.WasPassed() && !aDetails.mId.Value().IsEmpty()) {
+    paymentRequest->SetId(aDetails.mId.Value());
+  } else {
+    paymentRequest->SetId(requestId);
+  }
+
   PaymentRequestCreateRequest request(child->GetTabId(),
                                       requestId,
                                       methodData,
@@ -309,10 +314,8 @@ PaymentRequestManager::CreatePayment(nsPIDOMWindowInner* aWindow,
                                       options);
   gPaymentRequestChild->SendRequestPayment(request);
 
-  /*
-   *  TODO: Append the created PaymentRequest into mRequestQueue for management
-   *        and transfer the owner to the passed parameter aRequest
-   */
+  mRequestQueue.AppendElement(paymentRequest);
+  paymentRequest.forget(aRequest);
   return NS_OK;
 }
 
@@ -339,11 +342,20 @@ PaymentRequestManager::AbortPayment(const nsAString& aRequestId)
 nsresult
 PaymentRequestManager::CanMakePayment(const nsAString& aRequestId)
 {
-  /*
-   *  TODO: Create and initialize a PaymentRequestCanMakeRequest, then send the
-   *        request to chrome process by gPaymentRequestChild
-   */
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!gPaymentRequestChild) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (!request) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsString requestId;
+  request->GetInternalId(requestId);
+  PaymentRequestCanMakeRequest paymentAction(requestId);
+  gPaymentRequestChild->SendRequestPayment(paymentAction);
+  return NS_OK;
 }
 
 nsresult
@@ -360,12 +372,24 @@ PaymentRequestManager::UpdatePayment(const nsAString& aRequestId,
 nsresult
 PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
 {
-  /*
-   *  TODO: 1. Get the requestId from aResponse, then get PaymentRequest by Id.
-   *        2. Call the corresponding method of the PaymentRequest according to
-   *           the type of aResponse.
-   */
-  return NS_ERROR_NOT_IMPLEMENTED;
+  switch (aResponse.type()) {
+    case PaymentRequestResponse::TPaymentRequestCanMakeResponse: {
+      PaymentRequestCanMakeResponse response = aResponse;
+      RefPtr<PaymentRequest> request = GetPaymentRequestById(response.requestId());
+      if (!request) {
+        return NS_ERROR_FAILURE;
+      }
+      request->RespondCanMakePayment(response.result());
+      break;
+    }
+    /*
+     *  TODO: handle TPaymentRequestAbortResponse and TPaymentRequestShowResponse
+     */
+    default: {
+      return NS_ERROR_UNEXPECTED;
+    }
+  }
+  return NS_OK;
 }
 
 void
