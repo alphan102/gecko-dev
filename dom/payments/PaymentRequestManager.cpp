@@ -22,17 +22,43 @@ PaymentRequestChild* gPaymentRequestChild = nullptr;
  *  Following Convert* functions are used for convert PaymentRequest structs
  *  to transferable structs for IPC.
  */
-nsresult
-SerializeJSObject(JSObject* aObject, nsAString& aSerializedObject)
+nsString
+SerializeFromJSObject(JSObject* aObject, nsresult& aRv)
 {
   nsCOMPtr<nsIJSON> serializer = do_CreateInstance("@mozilla.org/dom/json;1");
   if (!serializer) {
-    return NS_ERROR_FAILURE;
+    aRv = NS_ERROR_FAILURE;
+    return EmptyString();
   }
   JS::Value value = JS::ObjectValue(*aObject);
   JSContext* cx = nsContentUtils::GetCurrentJSContext();
   MOZ_ASSERT(cx);
-  return serializer->EncodeFromJSVal(&value, cx, aSerializedObject);
+  nsString serializedObject;
+  aRv = serializer->EncodeFromJSVal(&value, cx, serializedObject);
+  if (NS_FAILED(aRv)) {
+    return EmptyString();
+  }
+  return serializedObject;
+}
+
+JSObject*
+DeserializeToJSObject(const nsAString& aSerializedObject, nsresult& aRv)
+{
+  nsCOMPtr<nsIJSON> serializer = do_CreateInstance("@mozilla.org/dom/json;1");
+  if (!serializer) {
+    aRv = NS_ERROR_FAILURE;
+    return nullptr;
+  }
+  JSContext* cx = nsContentUtils::GetCurrentJSContext();
+  MOZ_ASSERT(cx);
+  JS::Rooted<JS::Value> value(cx);
+  aRv = serializer->DecodeToJSVal(aSerializedObject, cx, &value);
+  if (NS_FAILED(aRv)) {
+    return nullptr;
+  }
+  JS::Rooted<JSObject*> object(cx);
+  object.set(&(value.get().toObject()));
+  return object.get();
 }
 
 IPCPaymentMethodData
@@ -45,9 +71,7 @@ ConvertMethodData(const PaymentMethodData& aMethodData, nsresult& aRv)
   }
   nsString serializedData;
   if (aMethodData.mData.WasPassed()) {
-    if(NS_FAILED(SerializeJSObject(aMethodData.mData.Value(), serializedData))) {
-      aRv = NS_ERROR_FAILURE;
-    }
+    serializedData = SerializeFromJSObject(aMethodData.mData.Value(), aRv);
   }
   return IPCPaymentMethodData(supportedMethods, serializedData);
 }
@@ -76,9 +100,7 @@ ConvertModifier(const PaymentDetailsModifier& aModifier, nsresult& aRv)
   }
   nsString serializedData;
   if (aModifier.mData.WasPassed()) {
-    if(NS_FAILED(SerializeJSObject(aModifier.mData.Value(), serializedData))) {
-      aRv = NS_ERROR_FAILURE;
-    }
+    serializedData = SerializeFromJSObject(aModifier.mData.Value(), aRv);
   }
   IPCPaymentItem total = ConvertItem(aModifier.mTotal);
   nsTArray<IPCPaymentItem> additionalDisplayItems;
@@ -322,11 +344,20 @@ PaymentRequestManager::CreatePayment(nsPIDOMWindowInner* aWindow,
 nsresult
 PaymentRequestManager::ShowPayment(const nsAString& aRequestId)
 {
-  /*
-   *  TODO: Create and initialize a PaymentRequestShowRequest, then send the
-   *        request to chrome process by gPaymentRequestChild
-   */
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!gPaymentRequestChild) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  RefPtr<PaymentRequest> payment = GetPaymentRequestById(aRequestId);
+  if (!payment) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsString requestId;
+  payment->GetInternalId(requestId);
+  PaymentRequestShowRequest request(requestId);
+  gPaymentRequestChild->SendRequestPayment(request);
+  return NS_OK;
 }
 
 nsresult
@@ -397,12 +428,28 @@ PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
       if (!request) {
         return NS_ERROR_FAILURE;
       }
-      request->RespondAbortPayment(response.success());
+      request->RespondAbortPayment(response.isSucceeded());
       break;
     }
-    /*
-     *  TODO: handle TPaymentRequestAbortResponse and TPaymentRequestShowResponse
-     */
+    case PaymentRequestResponse::TPaymentRequestShowResponse: {
+      PaymentRequestShowResponse response = aResponse;
+      RefPtr<PaymentRequest> request = GetPaymentRequestById(response.requestId());
+      if (!request) {
+        return NS_ERROR_FAILURE;
+      }
+      nsresult rv;
+      JSObject* data = DeserializeToJSObject(response.data(), rv);
+      if (NS_FAILED(rv)) {
+        return rv;
+      }
+      request->RespondShowPayment(response.isAccepted(),
+                                  response.methodName(),
+                                  data,
+                                  response.payerName(),
+                                  response.payerEmail(),
+                                  response.payerPhone());
+      break;
+    }
     default: {
       return NS_ERROR_UNEXPECTED;
     }

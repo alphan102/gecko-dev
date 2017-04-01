@@ -113,13 +113,13 @@ struct PaymentRequestCanMakeResponse
 struct PaymentRequestAbortResponse
 {
   nsString requestId;
-  bool success;
+  bool isSucceeded;
 };
 
 struct PaymentRequestShowResponse
 {
   nsString requestId;
-  bool     accept;
+  bool     isAccepted;
   nsString methodName;
   nsString data;
   nsString payerName;
