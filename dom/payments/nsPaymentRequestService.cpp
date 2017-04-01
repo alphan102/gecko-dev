@@ -132,7 +132,21 @@ nsPaymentRequestService::RequestPayment(nsIPaymentRequestRequest* aRequest)
     case nsIPaymentRequestRequest::SHOW_REQUEST: {
       /*
        *  TODO: Launch/inform payment UI here once the UI module is implemented.
+       *  Currently we generate a fake response for testing. This code should be
+       *  removed once the UI module is implmented
        */
+      nsCOMPtr<nsIPaymentRequestShowResponse> response =
+        do_CreateInstance(NS_PAYMENT_REQUEST_SHOW_RESPONSE_CONTRACT_ID);
+      nsString requestId;
+      payment->GetRequestId(requestId);
+      response->Init(requestId,
+	             nsIPaymentRequestResponse::PAYMENT_ACCEPTED,
+                     NS_LITERAL_STRING("VISA"),
+                     NS_LITERAL_STRING("{card number:\"4485058827460159\",Expires:\"4/2018\",CVV:\"151\"}"),
+                     NS_LITERAL_STRING("Bill A. Pacheco"),
+                     NS_LITERAL_STRING("BillAPacheco@jourrapide.com"),
+                     NS_LITERAL_STRING("+1-434-441-3879"));
+      RespondPayment(response);
       break;
     }
     default: {
@@ -158,7 +172,6 @@ nsPaymentRequestService::RespondPayment(nsIPaymentRequestResponse* aResponse)
     return NS_ERROR_FAILURE;
   }
   callback->RespondPayment(aResponse);
-  request->SetCallback(nullptr);
   uint32_t type;
   aResponse->GetType(&type);
   switch (type) {
@@ -172,12 +185,8 @@ nsPaymentRequestService::RespondPayment(nsIPaymentRequestResponse* aResponse)
      }
      break;
     }
-    case nsIPaymentRequestResponse::SHOW_RESPONSE:
-    {
-      mRequestQueue.RemoveElement(request);
-      break;
-    }
     default: {
+      request->SetCallback(nullptr);
       break;
     }
   }

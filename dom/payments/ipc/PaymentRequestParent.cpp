@@ -130,7 +130,7 @@ PaymentRequestParent::RespondPayment(nsIPaymentRequestResponse* aResponse)
       nsresponse->GetResult(&result);
       PaymentRequestCanMakeResponse response(requestId, result);
       if (!SendRespondPayment(response)) {
-	return NS_ERROR_FAILURE;
+        return NS_ERROR_FAILURE;
       }
       break;
     }
@@ -141,15 +141,39 @@ PaymentRequestParent::RespondPayment(nsIPaymentRequestResponse* aResponse)
       nsresponse->IsSucceeded(&isSucceeded);
       PaymentRequestAbortResponse response(requestId, isSucceeded);
       if (!SendRespondPayment(response)) {
-	return NS_ERROR_FAILURE;
+        return NS_ERROR_FAILURE;
       }
       break;
     }
     case nsIPaymentRequestResponse::SHOW_RESPONSE: {
+      nsCOMPtr<nsIPaymentRequestShowResponse> nsresponse =
+        do_QueryInterface(aResponse);
+      bool isAccepted;
+      nsString methodName;
+      nsString data;
+      nsString payerName;
+      nsString payerEmail;
+      nsString payerPhone;
+      nsresponse->IsAccepted(&isAccepted);
+      nsresponse->GetData(data);
+      nsresponse->GetMethodName(methodName);
+      nsresponse->GetPayerName(payerName);
+      nsresponse->GetPayerEmail(payerEmail);
+      nsresponse->GetPayerPhone(payerPhone);
+      PaymentRequestShowResponse response(requestId,
+                                          isAccepted,
+                                          methodName,
+                                          data,
+                                          payerName,
+                                          payerEmail,
+                                          payerPhone);
+      if (!SendRespondPayment(response)) {
+        return NS_ERROR_FAILURE;
+      }
       break;
     }
     default: {
-      break;
+      return NS_ERROR_UNEXPECTED;
     }
   }
   return NS_OK;
