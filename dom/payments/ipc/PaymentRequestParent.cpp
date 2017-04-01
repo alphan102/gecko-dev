@@ -73,7 +73,12 @@ PaymentRequestParent::RecvRequestPayment(const PaymentRequestRequest& aRequest)
       break;
     }
     case PaymentRequestRequest::TPaymentRequestShowRequest: {
-      return IPC_FAIL(this, "Not yet implemented");
+      PaymentRequestShowRequest request = aRequest;
+      nsrequest = do_CreateInstance(NS_PAYMENT_REQUEST_REQUEST_CONTRACT_ID);
+      nsrequest->Init(request.requestId(),
+                      nsIPaymentRequestRequest::SHOW_REQUEST,
+                      callback);
+      break;
     }
     case PaymentRequestRequest::TPaymentRequestAbortRequest: {
       PaymentRequestAbortRequest request = aRequest;

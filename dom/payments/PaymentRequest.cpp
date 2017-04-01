@@ -174,7 +174,7 @@ PaymentRequest::Show(ErrorResult& aRv)
 void
 PaymentRequest::RespondShowPayment(bool aAccept,
                                    const nsAString& aMethodName,
-                                   JSObject* aDetails,
+                                   const nsAString& aDetails,
                                    const nsAString& aPayerName,
                                    const nsAString& aPayerEmail,
                                    const nsAString& aPayerPhone)
