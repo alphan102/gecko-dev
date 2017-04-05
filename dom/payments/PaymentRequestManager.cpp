@@ -41,26 +41,6 @@ SerializeFromJSObject(JSObject* aObject, nsresult& aRv)
   return serializedObject;
 }
 
-JSObject*
-DeserializeToJSObject(const nsAString& aSerializedObject, nsresult& aRv)
-{
-  nsCOMPtr<nsIJSON> serializer = do_CreateInstance("@mozilla.org/dom/json;1");
-  if (!serializer) {
-    aRv = NS_ERROR_FAILURE;
-    return nullptr;
-  }
-  JSContext* cx = nsContentUtils::GetCurrentJSContext();
-  MOZ_ASSERT(cx);
-  JS::Rooted<JS::Value> value(cx);
-  aRv = serializer->DecodeToJSVal(aSerializedObject, cx, &value);
-  if (NS_FAILED(aRv)) {
-    return nullptr;
-  }
-  JS::Rooted<JSObject*> object(cx);
-  object.set(&(value.get().toObject()));
-  return object.get();
-}
-
 IPCPaymentMethodData
 ConvertMethodData(const PaymentMethodData& aMethodData, nsresult& aRv)
 {
@@ -437,14 +417,14 @@ PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
       if (!request) {
         return NS_ERROR_FAILURE;
       }
-      nsresult rv;
-      JSObject* data = DeserializeToJSObject(response.data(), rv);
-      if (NS_FAILED(rv)) {
-        return rv;
-      }
+      /*
+        response.data() is a serialized JSON object, and should be deserialized
+        in PaymentResponse interface. Don't deserialize here because manager don't
+        have proper JSContext to create JSObject.
+      */
       request->RespondShowPayment(response.isAccepted(),
                                   response.methodName(),
-                                  data,
+                                  response.data(),
                                   response.payerName(),
                                   response.payerEmail(),
                                   response.payerPhone());
