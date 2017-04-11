@@ -31,6 +31,7 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(PaymentResponse)
 
   PaymentResponse(nsPIDOMWindowInner* aWindow,
+                  const nsAString& aInternalId,
                   const nsAString& aRequestId,
                   const nsAString& aMethodName,
                   const nsAString& aShippingOption,
@@ -78,6 +79,7 @@ protected:
 private:
   nsCOMPtr<nsPIDOMWindowInner> mOwner;
   bool mCompleteCalled;
+  nsString mInternalId;
   nsString mRequestId;
   nsString mMethodName;
   nsString mShippingOption;

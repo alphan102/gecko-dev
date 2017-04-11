@@ -184,8 +184,9 @@ PaymentRequest::RespondShowPayment(bool aAccept,
   // TODO : need to add aDetails into paymentResponse
   // TODO : need to add shipping option, hard-code "AIR" here
   RefPtr<PaymentResponse> paymentResponse =
-    new PaymentResponse(mWindow, mId, aMethodName, NS_LITERAL_STRING("AIR"),
-                        aPayerName, aPayerEmail, aPayerPhone);
+    new PaymentResponse(mWindow, mInternalId, mId, aMethodName,
+                        NS_LITERAL_STRING("AIR"), aPayerName,
+                        aPayerEmail, aPayerPhone);
   mResponse = paymentResponse;
   mAcceptPromise->MaybeResolve(paymentResponse);
   mState = eClosed;

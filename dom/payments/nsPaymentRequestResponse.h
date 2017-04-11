@@ -81,6 +81,22 @@ protected:
   nsString mPayerPhone;
 };
 
+class nsPaymentRequestCompleteResponse final : public nsIPaymentRequestCompleteResponse
+                                             , public nsPaymentRequestResponse
+{
+public:
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_FORWARD_NSIPAYMENTREQUESTRESPONSE(nsPaymentRequestResponse::)
+  NS_DECL_NSIPAYMENTREQUESTCOMPLETERESPONSE
+
+  nsPaymentRequestCompleteResponse();
+
+protected:
+  ~nsPaymentRequestCompleteResponse();
+
+  uint32_t mCompleteStatus;
+};
+
 class nsPaymentRequestCallback final : public nsIPaymentRequestCallback
 {
 public:

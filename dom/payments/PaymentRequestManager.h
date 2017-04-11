@@ -11,6 +11,7 @@
 #include "PaymentRequest.h"
 #include "mozilla/dom/PaymentRequestBinding.h"
 #include "mozilla/dom/PaymentRequestUpdateEventBinding.h"
+#include "mozilla/dom/PaymentResponseBinding.h"
 #include "nsCOMPtr.h"
 #include "nsTArray.h"
 #include "nsString.h"
@@ -55,6 +56,8 @@ public:
   nsresult AbortPayment(const nsAString& aRequestId);
   nsresult UpdatePayment(const nsAString& aRequestId,
                          const PaymentDetailsUpdate& aDetails);
+  nsresult CompletePayment(const nsAString& aRequestId,
+                           const PaymentComplete& aComplete);
 
   /*
    *  This method is used for responding a specific task when the result

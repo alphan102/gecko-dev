@@ -140,12 +140,26 @@ nsPaymentRequestService::RequestPayment(nsIPaymentRequestRequest* aRequest)
       nsString requestId;
       payment->GetRequestId(requestId);
       response->Init(requestId,
-	             nsIPaymentRequestResponse::PAYMENT_ACCEPTED,
+                     nsIPaymentRequestResponse::PAYMENT_ACCEPTED,
                      NS_LITERAL_STRING("VISA"),
                      NS_LITERAL_STRING("{card number:\"4485058827460159\",Expires:\"4/2018\",CVV:\"151\"}"),
                      NS_LITERAL_STRING("Bill A. Pacheco"),
                      NS_LITERAL_STRING("BillAPacheco@jourrapide.com"),
                      NS_LITERAL_STRING("+1-434-441-3879"));
+      RespondPayment(response);
+      break;
+    }
+    case nsIPaymentRequestRequest::COMPLETE_REQUEST: {
+      /*
+       *  TODO: Inform payment UI once the UI module is implemented.
+       *  Currently we generate a fake response for testing. This code should be
+       *  removed once the UI module is implmented
+       */
+      nsCOMPtr<nsIPaymentRequestCompleteResponse> response =
+        do_CreateInstance(NS_PAYMENT_REQUEST_COMPLETE_RESPONSE_CONTRACT_ID);
+      nsString requestId;
+      payment->GetRequestId(requestId);
+      response->Init(requestId, nsIPaymentRequestResponse::COMPLETE_SUCCEEDED);
       RespondPayment(response);
       break;
     }
@@ -176,14 +190,19 @@ nsPaymentRequestService::RespondPayment(nsIPaymentRequestResponse* aResponse)
   aResponse->GetType(&type);
   switch (type) {
     case nsIPaymentRequestResponse::ABORT_RESPONSE: {
-     bool isSucceeded;
-     nsCOMPtr<nsIPaymentRequestAbortResponse> response = do_QueryInterface(aResponse);
-     response->IsSucceeded(&isSucceeded);
-     if (isSucceeded) {
-       request->SetCallback(nullptr);
-       mRequestQueue.RemoveElement(request);
-     }
-     break;
+      bool isSucceeded;
+      nsCOMPtr<nsIPaymentRequestAbortResponse> response = do_QueryInterface(aResponse);
+      response->IsSucceeded(&isSucceeded);
+      if (isSucceeded) {
+        request->SetCallback(nullptr);
+        mRequestQueue.RemoveElement(request);
+      }
+      break;
+    }
+    case nsIPaymentRequestResponse::COMPLETE_RESPONSE: {
+      request->SetCallback(nullptr);
+      mRequestQueue.RemoveElement(request);
+      break;
     }
     default: {
       request->SetCallback(nullptr);

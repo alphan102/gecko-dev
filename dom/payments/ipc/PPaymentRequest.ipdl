@@ -95,6 +95,12 @@ struct PaymentRequestUpdateRequest
   IPCPaymentDetails details;
 };
 
+struct PaymentRequestCompleteRequest
+{
+  nsString requestId;
+  nsString completeStatus;
+};
+
 union PaymentRequestRequest
 {
   PaymentRequestCreateRequest;
@@ -102,6 +108,7 @@ union PaymentRequestRequest
   PaymentRequestAbortRequest;
   PaymentRequestCanMakeRequest;
   PaymentRequestUpdateRequest;
+  PaymentRequestCompleteRequest;
 };
 
 struct PaymentRequestCanMakeResponse
@@ -127,11 +134,18 @@ struct PaymentRequestShowResponse
   nsString payerPhone;
 };
 
+struct PaymentRequestCompleteResponse
+{
+  nsString requestId;
+  bool isCompleted;
+};
+
 union PaymentRequestResponse
 {
   PaymentRequestCanMakeResponse;
   PaymentRequestAbortResponse;
   PaymentRequestShowResponse;
+  PaymentRequestCompleteResponse;
 };
 
 sync protocol PPaymentRequest

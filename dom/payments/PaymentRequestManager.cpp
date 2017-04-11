@@ -10,6 +10,7 @@
 #include "mozilla/dom/PaymentRequestChild.h"
 #include "nsContentUtils.h"
 #include "nsIJSON.h"
+#include "nsString.h"
 
 namespace mozilla {
 namespace dom {
@@ -192,21 +193,11 @@ ConvertDetailsUpdate(const PaymentDetailsUpdate& aDetails, nsresult& aRv)
 IPCPaymentOptions
 ConvertOptions(const PaymentOptions& aOptions)
 {
-  nsString shippingType;
-  switch (aOptions.mShippingType) {
-    case PaymentShippingType::Delivery: {
-      shippingType.AssignLiteral("Delivery");
-      break;
-    }
-    case PaymentShippingType::Pickup: {
-      shippingType.AssignLiteral("Pickup");
-      break;
-    }
-    case PaymentShippingType::Shipping:
-    default: {
-      shippingType.AssignLiteral("Shipping");
-      break;
-    }
+  uint8_t shippingTypeIndex = static_cast<uint8_t>(aOptions.mShippingType);
+  nsString shippingType(NS_LITERAL_STRING("shipping"));
+  if (shippingTypeIndex < ArrayLength(PaymentShippingTypeValues::strings)) {
+    shippingType.AssignASCII(
+      PaymentShippingTypeValues::strings[shippingTypeIndex].value);
   }
   return IPCPaymentOptions(aOptions.mRequestPayerName,
                            aOptions.mRequestPayerEmail,
@@ -328,15 +319,14 @@ PaymentRequestManager::ShowPayment(const nsAString& aRequestId)
     return NS_ERROR_NOT_INITIALIZED;
   }
 
-  RefPtr<PaymentRequest> payment = GetPaymentRequestById(aRequestId);
-  if (!payment) {
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (!request) {
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsString requestId;
-  payment->GetInternalId(requestId);
-  PaymentRequestShowRequest request(requestId);
-  gPaymentRequestChild->SendRequestPayment(request);
+  nsString requestId(aRequestId);
+  PaymentRequestShowRequest paymentAction(requestId);
+  gPaymentRequestChild->SendRequestPayment(paymentAction);
   return NS_OK;
 }
 
@@ -352,8 +342,7 @@ PaymentRequestManager::AbortPayment(const nsAString& aRequestId)
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsString requestId;
-  request->GetInternalId(requestId);
+  nsString requestId(aRequestId);
   PaymentRequestAbortRequest paymentAction(requestId);
   gPaymentRequestChild->SendRequestPayment(paymentAction);
   return NS_OK;
@@ -371,8 +360,7 @@ PaymentRequestManager::CanMakePayment(const nsAString& aRequestId)
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsString requestId;
-  request->GetInternalId(requestId);
+  nsString requestId(aRequestId);
   PaymentRequestCanMakeRequest paymentAction(requestId);
   gPaymentRequestChild->SendRequestPayment(paymentAction);
   return NS_OK;
@@ -387,6 +375,32 @@ PaymentRequestManager::UpdatePayment(const nsAString& aRequestId,
    *        request to chrome process by gPaymentRequestChild
    */
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+PaymentRequestManager::CompletePayment(const nsAString& aRequestId,
+                                       const PaymentComplete& aComplete)
+{
+  if (!gPaymentRequestChild) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (!request) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsString completeStatusString(NS_LITERAL_STRING("unknown"));
+  uint8_t completeIndex = static_cast<uint8_t>(aComplete);
+  if (completeIndex < ArrayLength(PaymentCompleteValues::strings)) {
+    completeStatusString.AssignASCII(
+      PaymentCompleteValues::strings[completeIndex].value);
+  }
+
+  nsString requestId(aRequestId);
+  PaymentRequestCompleteRequest paymentAction(requestId, completeStatusString);
+  gPaymentRequestChild->SendRequestPayment(paymentAction);
+  return NS_OK;
 }
 
 nsresult
@@ -409,6 +423,9 @@ PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
         return NS_ERROR_FAILURE;
       }
       request->RespondAbortPayment(response.isSucceeded());
+      if (response.isSucceeded()) {
+        mRequestQueue.RemoveElement(request);
+      }
       break;
     }
     case PaymentRequestResponse::TPaymentRequestShowResponse: {
@@ -428,6 +445,16 @@ PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
                                   response.payerName(),
                                   response.payerEmail(),
                                   response.payerPhone());
+      break;
+    }
+    case PaymentRequestResponse::TPaymentRequestCompleteResponse: {
+      PaymentRequestCompleteResponse response = aResponse;
+      RefPtr<PaymentRequest> request = GetPaymentRequestById(response.requestId());
+      if (!request) {
+        return NS_ERROR_FAILURE;
+      }
+      request->RespondComplete();
+      mRequestQueue.RemoveElement(request);
       break;
     }
     default: {

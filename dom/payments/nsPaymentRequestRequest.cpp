@@ -179,5 +179,28 @@ nsPaymentRequestUpdateRequest::GetDetails(nsIPaymentDetails** aDetails)
   details.forget(aDetails);
   return NS_OK;
 }
+
+/* nsPaymentRequestCompleteRequest */
+
+NS_IMPL_ISUPPORTS_INHERITED(nsPaymentRequestCompleteRequest,
+                            nsPaymentRequestRequest,
+                            nsIPaymentRequestCompleteRequest)
+
+NS_IMETHODIMP
+nsPaymentRequestCompleteRequest::GetCompleteStatus(nsAString& aCompleteStatus)
+{
+  aCompleteStatus = mCompleteStatus;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsPaymentRequestCompleteRequest::InitRequest(const nsAString& aRequestId,
+                                             nsIPaymentRequestCallback* aCallback,
+                                             const nsAString& aCompleteStatus)
+{
+  Init(aRequestId, nsIPaymentRequestRequest::COMPLETE_REQUEST, aCallback);
+  mCompleteStatus = aCompleteStatus;
+  return NS_OK;
+}
 } // end of namespace dom
 } // end of namespace mozilla

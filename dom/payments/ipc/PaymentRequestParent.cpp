@@ -69,7 +69,7 @@ PaymentRequestParent::RecvRequestPayment(const PaymentRequestRequest& aRequest)
       nsrequest = do_CreateInstance(NS_PAYMENT_REQUEST_REQUEST_CONTRACT_ID);
       nsrequest->Init(request.requestId(),
                       nsIPaymentRequestRequest::CANMAKE_REQUEST,
-		      callback);
+                      callback);
       break;
     }
     case PaymentRequestRequest::TPaymentRequestShowRequest: {
@@ -85,11 +85,21 @@ PaymentRequestParent::RecvRequestPayment(const PaymentRequestRequest& aRequest)
       nsrequest = do_CreateInstance(NS_PAYMENT_REQUEST_REQUEST_CONTRACT_ID);
       nsrequest->Init(request.requestId(),
                       nsIPaymentRequestRequest::ABORT_REQUEST,
-		      callback);
+                      callback);
       break;
     }
     case PaymentRequestRequest::TPaymentRequestUpdateRequest: {
       return IPC_FAIL(this, "Not yet implemented");
+    }
+    case PaymentRequestRequest::TPaymentRequestCompleteRequest: {
+      PaymentRequestCompleteRequest request = aRequest;
+      nsCOMPtr<nsIPaymentRequestCompleteRequest> completeRequest =
+        do_CreateInstance(NS_PAYMENT_REQUEST_COMPLETE_REQUEST_CONTRACT_ID);
+      completeRequest->InitRequest(request.requestId(),
+                                   callback,
+                                   request.completeStatus());
+      nsrequest = do_QueryInterface(completeRequest);
+      break;
     }
     default: {
       return IPC_FAIL(this, "Unexpected request type");
@@ -172,6 +182,17 @@ PaymentRequestParent::RespondPayment(nsIPaymentRequestResponse* aResponse)
                                           payerName,
                                           payerEmail,
                                           payerPhone);
+      if (!SendRespondPayment(response)) {
+        return NS_ERROR_FAILURE;
+      }
+      break;
+    }
+    case nsIPaymentRequestResponse::COMPLETE_RESPONSE: {
+      nsCOMPtr<nsIPaymentRequestCompleteResponse> nsresponse =
+        do_QueryInterface(aResponse);
+      bool isCompleted;
+      nsresponse->IsCompleted(&isCompleted);
+      PaymentRequestCompleteResponse response(requestId, isCompleted);
       if (!SendRespondPayment(response)) {
         return NS_ERROR_FAILURE;
       }
