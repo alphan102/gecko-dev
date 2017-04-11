@@ -21,6 +21,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PaymentResponse)
 NS_INTERFACE_MAP_END
 
 PaymentResponse::PaymentResponse(nsPIDOMWindowInner* aWindow,
+                                 const nsAString& aInternalId,
                                  const nsAString& aRequestId,
                                  const nsAString& aMethodName,
                                  const nsAString& aShippingOption,
@@ -29,6 +30,7 @@ PaymentResponse::PaymentResponse(nsPIDOMWindowInner* aWindow,
                                  const nsAString& aPayerPhone)
   : mOwner(aWindow)
   , mCompleteCalled(false)
+  , mInternalId(aInternalId)
   , mRequestId(aRequestId)
   , mMethodName(aMethodName)
   , mShippingOption(aShippingOption)
@@ -95,25 +97,22 @@ PaymentResponse::Complete(PaymentComplete result, ErrorResult& aRv)
   }
 
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mOwner);
-  ErrorResult rv;
-  RefPtr<Promise> promise = Promise::Create(global, rv);
-  if (rv.Failed()) {
+  ErrorResult errResult;
+  RefPtr<Promise> promise = Promise::Create(global, errResult);
+  if (errResult.Failed()) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
 
   mCompleteCalled = true;
 
-/*	TODO : Need PaymentRequestManager support complete function
   RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
-  nsresult rv;
-  mResultPromise = promise;
-  rv = manager->Complete(mRequestIdi, result);
+  nsresult rv = manager->CompletePayment(mInternalId, result);
   if (NS_FAILED(rv)) {
     promise->MaybeReject(NS_ERROR_FAILURE);
     return promise.forget();
   }
-*/
+
   mPromise = promise;
   return promise.forget();
 }

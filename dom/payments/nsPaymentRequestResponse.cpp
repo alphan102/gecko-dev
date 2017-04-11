@@ -189,6 +189,44 @@ nsPaymentRequestShowResponse::IsAccepted(bool* aIsAccepted)
   return NS_OK;
 }
 
+/* nsPaymentRequestCompleteResponse */
+
+NS_IMPL_ISUPPORTS_INHERITED(nsPaymentRequestCompleteResponse,
+                            nsPaymentRequestResponse,
+                            nsIPaymentRequestCompleteResponse)
+
+nsPaymentRequestCompleteResponse::nsPaymentRequestCompleteResponse()
+{
+  mType = nsIPaymentRequestResponse::COMPLETE_RESPONSE;
+}
+
+nsPaymentRequestCompleteResponse::~nsPaymentRequestCompleteResponse()
+{
+}
+
+nsresult
+nsPaymentRequestCompleteResponse::Init(const nsAString& aRequestId,
+                                       const uint32_t aCompleteStatus)
+{
+  mRequestId = aRequestId;
+  mCompleteStatus = aCompleteStatus;
+  return NS_OK;
+}
+
+nsresult
+nsPaymentRequestCompleteResponse::GetCompleteStatus(uint32_t* aCompleteStatus)
+{
+  *aCompleteStatus = mCompleteStatus;
+  return NS_OK;
+}
+
+nsresult
+nsPaymentRequestCompleteResponse::IsCompleted(bool* aIsCompleted)
+{
+  *aIsCompleted = (mCompleteStatus == nsIPaymentRequestResponse::COMPLETE_SUCCEEDED);
+  return NS_OK;
+}
+
 /* nsPaymentRequestCallback */
 
 NS_IMPL_ISUPPORTS(nsPaymentRequestCallback,
