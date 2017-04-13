@@ -148,6 +148,21 @@ union PaymentRequestResponse
   PaymentRequestCompleteResponse;
 };
 
+struct IPCPaymentAddress
+{
+  nsString country;
+  nsString[] addressLine;
+  nsString region;
+  nsString city;
+  nsString dependentLocality;
+  nsString postalCode;
+  nsString sortingCode;
+  nsString languageCode;
+  nsString organization;
+  nsString recipient;
+  nsString phone;
+};
+
 sync protocol PPaymentRequest
 {
   manager PContent;
@@ -160,10 +175,8 @@ parent:
 child:
   async RespondPayment(PaymentRequestResponse response);
 
-  /*
-   *  TODO: Add IPCPaymentAddress as a parameter for ChangeShippingAddress.
-   */
-  async ChangeShippingAddress(nsString requestId);
+  async ChangeShippingAddress(nsString requestId,
+                              IPCPaymentAddress address);
 
   async ChangeShippingOption(nsString requestId,
                              nsString option);

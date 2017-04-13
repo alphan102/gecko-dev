@@ -37,8 +37,14 @@ PaymentRequestChild::RecvRespondPayment(const PaymentRequestResponse& aResponse)
 }
 
 mozilla::ipc::IPCResult
-PaymentRequestChild::RecvChangeShippingAddress(const nsString& aRequestId)
+PaymentRequestChild::RecvChangeShippingAddress(const nsString& aRequestId,
+                                               const IPCPaymentAddress& aAddress)
 {
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  MOZ_ASSERT(manager);
+  if (NS_FAILED(manager->ChangeShippingAddress(aRequestId, aAddress))) {
+    return IPC_FAIL_NO_REASON(this);
+  }
   return IPC_OK();
 }
 

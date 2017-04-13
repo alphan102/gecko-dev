@@ -24,7 +24,8 @@ protected:
   RecvRespondPayment(const PaymentRequestResponse& aResponse) override;
 
   virtual mozilla::ipc::IPCResult
-  RecvChangeShippingAddress(const nsString& aRequestId) override;
+  RecvChangeShippingAddress(const nsString& aRequestId,
+                            const IPCPaymentAddress& aAddress) override;
 
   virtual mozilla::ipc::IPCResult
   RecvChangeShippingOption(const nsString& aRequestId,
