@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORTS += [
+    'nsPaymentAddress.h',
     'nsPaymentRequest.h',
     'nsPaymentRequestRequest.h',
     'nsPaymentRequestResponse.h',
@@ -23,10 +24,12 @@ EXPORTS.mozilla.dom += [
 UNIFIED_SOURCES += [
     'ipc/PaymentRequestChild.cpp',
     'ipc/PaymentRequestParent.cpp',
+    'nsPaymentAddress.cpp',
     'nsPaymentRequest.cpp',
     'nsPaymentRequestRequest.cpp',
     'nsPaymentRequestResponse.cpp',
     'nsPaymentRequestService.cpp',
+    'nsPaymentRequestUtils.cpp',
     'PaymentAddress.cpp',
     'PaymentRequest.cpp',
     'PaymentRequestManager.cpp',

@@ -10,6 +10,7 @@
 #include "mozilla/dom/ipc/IdType.h"
 #include "nsISupports.h"
 #include "mozilla/dom/PPaymentRequestParent.h"
+#include "nsIPaymentAddress.h"
 #include "nsIPaymentRequestResponse.h"
 
 namespace mozilla {
@@ -24,6 +25,10 @@ public:
   PaymentRequestParent();
 
   virtual nsresult RespondPayment(nsIPaymentRequestResponse* aResponse);
+  virtual nsresult ChangeShippingAddress(const nsAString& aRequestId,
+                                         nsIPaymentAddress* aAddress);
+  virtual nsresult ChangeShippingOption(const nsAString& aRequestId,
+                                        const nsAString& aOption);
 protected:
   virtual mozilla::ipc::IPCResult
   RecvRequestPayment(const PaymentRequestRequest& aRequest) override;

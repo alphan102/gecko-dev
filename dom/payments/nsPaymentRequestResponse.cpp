@@ -248,8 +248,8 @@ nsPaymentRequestCallback::RespondPayment(nsIPaymentRequestResponse* aResponse)
     return NS_ERROR_UNEXPECTED;
   }
   if (!NS_IsMainThread()) {
-    RefPtr<nsIPaymentRequestCallback> self = this;
-    RefPtr<nsIPaymentRequestResponse> response = aResponse;
+    nsCOMPtr<nsIPaymentRequestCallback> self = this;
+    nsCOMPtr<nsIPaymentRequestResponse> response = aResponse;
     nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction([self, response] ()
     {
       self->RespondPayment(response);
@@ -257,6 +257,33 @@ nsPaymentRequestCallback::RespondPayment(nsIPaymentRequestResponse* aResponse)
     return NS_DispatchToMainThread(r);
   }
   return mParent->RespondPayment(aResponse);
+}
+
+NS_IMETHODIMP
+nsPaymentRequestCallback::ChangeShippingAddress(const nsAString& aRequestId,
+                                                nsIPaymentAddress* aAddress)
+{
+  if (!mParent) {
+    return NS_ERROR_UNEXPECTED;
+  }
+  if (!NS_IsMainThread()) {
+    nsCOMPtr<nsIPaymentRequestCallback> self = this;
+    nsCOMPtr<nsIPaymentAddress> address = aAddress;
+    nsString requestId(aRequestId);
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction([self, requestId, address] ()
+    {
+      self->ChangeShippingAddress(requestId, address);
+    });
+    return NS_DispatchToMainThread(r);
+  }
+  return mParent->ChangeShippingAddress(aRequestId, aAddress);
+}
+
+NS_IMETHODIMP
+nsPaymentRequestCallback::ChangeShippingOption(const nsAString& aRequestId,
+                                               const nsAString& aOption)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 } // end of namespace dom
 } // end of namespace mozilla

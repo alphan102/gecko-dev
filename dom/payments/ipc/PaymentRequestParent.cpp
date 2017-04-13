@@ -4,16 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "PaymentRequestParent.h"
 #include "mozilla/ipc/InputStreamUtils.h"
-#include "nsServiceManagerUtils.h"
-#include "nsPaymentRequest.h"
-#include "nsIPaymentRequestRequest.h"
-#include "nsIPaymentRequestService.h"
-#include "nsIMutableArray.h"
-#include "nsISupportsPrimitives.h"
 #include "nsArrayUtils.h"
 #include "nsCOMPtr.h"
+#include "nsIMutableArray.h"
+#include "nsIPaymentRequestRequest.h"
+#include "nsIPaymentRequestService.h"
+#include "nsISupportsPrimitives.h"
+#include "nsPaymentRequest.h"
+#include "nsPaymentRequestUtils.h"
+#include "nsServiceManagerUtils.h"
+#include "PaymentRequestParent.h"
 
 using namespace mozilla::dom;
 
@@ -203,6 +204,58 @@ PaymentRequestParent::RespondPayment(nsIPaymentRequestResponse* aResponse)
     }
   }
   return NS_OK;
+}
+
+nsresult
+PaymentRequestParent::ChangeShippingAddress(const nsAString& aRequestId,
+                                            nsIPaymentAddress* aAddress)
+{
+  if (mActorDestroyed) {
+    return NS_ERROR_FAILURE;
+  }
+  nsString country;
+  nsCOMPtr<nsIArray> iaddressLine;
+  nsTArray<nsString> addressLine;
+  nsString region;
+  nsString city;
+  nsString dependentLocality;
+  nsString postalCode;
+  nsString sortingCode;
+  nsString languageCode;
+  nsString organization;
+  nsString recipient;
+  nsString phone;
+  aAddress->GetCountry(country);
+  aAddress->GetAddressLine(getter_AddRefs(iaddressLine));
+  aAddress->GetRegion(region);
+  aAddress->GetCity(city);
+  aAddress->GetDependentLocality(dependentLocality);
+  aAddress->GetPostalCode(postalCode);
+  aAddress->GetSortingCode(sortingCode);
+  aAddress->GetLanguageCode(languageCode);
+  aAddress->GetOrganization(organization);
+  aAddress->GetRecipient(recipient);
+  aAddress->GetPhone(phone);
+  if (NS_FAILED(ConvertISupportsStringstoStrings(iaddressLine, addressLine))) {
+    return NS_ERROR_FAILURE;
+  }
+
+  IPCPaymentAddress ipcAddress(country, addressLine, region, city,
+                               dependentLocality, postalCode, sortingCode,
+                               languageCode, organization, recipient, phone);
+
+  nsString requestId(aRequestId);
+  if (!SendChangeShippingAddress(requestId, ipcAddress)) {
+    return NS_ERROR_FAILURE;
+  }
+  return NS_OK;
+}
+
+nsresult
+PaymentRequestParent::ChangeShippingOption(const nsAString& aRequestId,
+                                           const nsAString& aOption)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 } // end of namespace dom
 } // end of namespace mozilla

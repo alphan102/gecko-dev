@@ -464,34 +464,36 @@ PaymentRequestManager::RespondPayment(const PaymentRequestResponse& aResponse)
   return NS_OK;
 }
 
-void
-PaymentRequestManager::ChangeShippingAddress(const nsAString& aRequestId/*,
-                                             cosnt PaymentAddress& aAddress*/)
+nsresult
+PaymentRequestManager::ChangeShippingAddress(const nsAString& aRequestId,
+                                             const IPCPaymentAddress& aAddress)
 {
   RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
   if (!request) {
-    return;
+    return NS_ERROR_UNEXPECTED;
   }
   /*
    *  TODO: Once receive shipping address change from parent side,
    *        this method is called to create and emit a PaymentRequestUpdateEvent
    *        to inform the website.
    */
+  return NS_OK;
 }
 
-void
+nsresult
 PaymentRequestManager::ChangeShippingOption(const nsAString& aRequestId,
                                             const nsAString& aOption)
 {
   RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
   if (!request) {
-    return;
+    return NS_ERROR_UNEXPECTED;
   }
   /*
    *  TODO: Once receive shipping option change from parent side,
    *        this method is called to create and emit a PaymentRequestUpdateEvent
    *        to inform the website.
    */
+  return NS_OK;
 }
 } // end of namespace dom
 } // end of namespace mozilla

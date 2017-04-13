@@ -5,6 +5,7 @@
 
 #include "nsISupports.idl"
 #include "nsIVariant.idl"
+#include "nsIPaymentAddress.idl"
 
 [scriptable, uuid(a607c095-ef60-4a9b-a3d0-0506c60728b3)]
 interface nsIPaymentRequestResponse : nsISupports
@@ -144,6 +145,8 @@ interface nsIPaymentRequestCompleteResponse : nsIPaymentRequestResponse
 interface nsIPaymentRequestCallback : nsISupports
 {
   void respondPayment(in nsIPaymentRequestResponse aResponse);
+  void changeShippingAddress(in AString aRequestId, in nsIPaymentAddress aAddress);
+  void changeShippingOption(in AString aRequestId, in AString aOption);
 };
 
 %{C++

@@ -5,6 +5,7 @@
 
 #include "nsISupports.idl"
 #include "nsIVariant.idl"
+#include "nsIPaymentAddress.idl"
 #include "nsIPaymentRequest.idl"
 #include "nsIPaymentRequestRequest.idl"
 #include "nsIPaymentRequestResponse.idl"
@@ -36,9 +37,8 @@ interface nsIPaymentRequestService : nsISupports
   /*
    *  These methods are used for payment UI to inform merchant the shipping
    *  address/option change.
-   *  TODO: Adding nsIPaymentAddress as an input parameter.
    */
-  void changeShippingAddress(in AString requestId);
+  void changeShippingAddress(in AString requestId, in nsIPaymentAddress aAddress);
   void changeShippingOption(in AString requestId, in AString option);
 };
 

@@ -20,6 +20,7 @@ namespace mozilla {
 namespace dom {
 
 class PaymentRequestResponse;
+class IPCPaymentAddress;
 
 /*
  *  PaymentRequestManager is a singleton used to manage the created PaymentRequests.
@@ -69,9 +70,10 @@ public:
    *  Following methods are used to perform shipping address/option change that
    *  sent from chrome process.
    */
-  void ChangeShippingAddress(const nsAString& aRequestId);
-  void ChangeShippingOption(const nsAString& aRequestId,
-                            const nsAString& aOption);
+  nsresult ChangeShippingAddress(const nsAString& aRequestId,
+                                 const IPCPaymentAddress& aAddress);
+  nsresult ChangeShippingOption(const nsAString& aRequestId,
+                                const nsAString& aOption);
 
 protected:
   PaymentRequestManager();

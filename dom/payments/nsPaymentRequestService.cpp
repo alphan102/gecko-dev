@@ -213,9 +213,21 @@ nsPaymentRequestService::RespondPayment(nsIPaymentRequestResponse* aResponse)
 }
 
 NS_IMETHODIMP
-nsPaymentRequestService::ChangeShippingAddress(const nsAString& aRequestId)
+nsPaymentRequestService::ChangeShippingAddress(const nsAString& aRequestId,
+                                               nsIPaymentAddress* aAddress)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIPaymentRequest> request;
+  nsresult rv = GetPaymentRequestById(aRequestId, getter_AddRefs(request));
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIPaymentRequestCallback> callback;
+  rv = request->GetCallback(getter_AddRefs(callback));
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
+  callback->ChangeShippingAddress(aRequestId, aAddress);
+  return NS_OK;
 }
 
 NS_IMETHODIMP

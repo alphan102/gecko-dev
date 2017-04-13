@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ModuleUtils.h"
+#include "nsPaymentAddress.h"
 #include "nsPaymentRequestRequest.h"
 #include "nsPaymentRequestResponse.h"
 #include "nsPaymentRequestService.h"
@@ -17,6 +18,7 @@ using mozilla::dom::nsPaymentRequestCanMakeResponse;
 using mozilla::dom::nsPaymentRequestAbortResponse;
 using mozilla::dom::nsPaymentRequestShowResponse;
 using mozilla::dom::nsPaymentRequestCompleteResponse;
+using mozilla::dom::nsPaymentAddress;
 using mozilla::dom::nsPaymentRequestService;
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsPaymentRequestRequest)
@@ -27,6 +29,7 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsPaymentRequestCanMakeResponse)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsPaymentRequestAbortResponse)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsPaymentRequestShowResponse)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsPaymentRequestCompleteResponse)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsPaymentAddress)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsPaymentRequestService,
                                          nsPaymentRequestService::GetSingleton)
 
@@ -38,6 +41,7 @@ NS_DEFINE_NAMED_CID(NS_PAYMENT_REQUEST_CANMAKE_RESPONSE_CID);
 NS_DEFINE_NAMED_CID(NS_PAYMENT_REQUEST_ABORT_RESPONSE_CID);
 NS_DEFINE_NAMED_CID(NS_PAYMENT_REQUEST_SHOW_RESPONSE_CID);
 NS_DEFINE_NAMED_CID(NS_PAYMENT_REQUEST_COMPLETE_RESPONSE_CID);
+NS_DEFINE_NAMED_CID(NS_PAYMENT_ADDRESS_CID);
 NS_DEFINE_NAMED_CID(NS_PAYMENT_REQUEST_SERVICE_CID);
 
 static const mozilla::Module::CIDEntry kPaymentRequestCIDs[] = {
@@ -49,6 +53,7 @@ static const mozilla::Module::CIDEntry kPaymentRequestCIDs[] = {
   { &kNS_PAYMENT_REQUEST_ABORT_RESPONSE_CID, false, nullptr, nsPaymentRequestAbortResponseConstructor},
   { &kNS_PAYMENT_REQUEST_SHOW_RESPONSE_CID, false, nullptr, nsPaymentRequestShowResponseConstructor},
   { &kNS_PAYMENT_REQUEST_COMPLETE_RESPONSE_CID, false, nullptr, nsPaymentRequestCompleteResponseConstructor},
+  { &kNS_PAYMENT_ADDRESS_CID, false, nullptr, nsPaymentAddressConstructor},
   { &kNS_PAYMENT_REQUEST_SERVICE_CID, true, nullptr, nsPaymentRequestServiceConstructor },
   { nullptr }
 };
@@ -62,6 +67,7 @@ static const mozilla::Module::ContractIDEntry kPaymentRequestContracts[] = {
   { NS_PAYMENT_REQUEST_ABORT_RESPONSE_CONTRACT_ID, &kNS_PAYMENT_REQUEST_ABORT_RESPONSE_CID },
   { NS_PAYMENT_REQUEST_SHOW_RESPONSE_CONTRACT_ID, &kNS_PAYMENT_REQUEST_SHOW_RESPONSE_CID },
   { NS_PAYMENT_REQUEST_COMPLETE_RESPONSE_CONTRACT_ID, &kNS_PAYMENT_REQUEST_COMPLETE_RESPONSE_CID },
+  { NS_PAYMENT_ADDRESS_CONTRACT_ID, &kNS_PAYMENT_ADDRESS_CID },
   { NS_PAYMENT_REQUEST_SERVICE_CONTRACT_ID, &kNS_PAYMENT_REQUEST_SERVICE_CID },
   { nullptr }
 };
@@ -75,6 +81,7 @@ static const mozilla::Module::CategoryEntry kPaymentRequestCategories[] = {
   { "payment-request", "nsPaymentRequestAbortResponse", NS_PAYMENT_REQUEST_ABORT_RESPONSE_CONTRACT_ID },
   { "payment-request", "nsPaymentRequestShowResponse", NS_PAYMENT_REQUEST_SHOW_RESPONSE_CONTRACT_ID },
   { "payment-request", "nsPaymentRequestCompleteResponse", NS_PAYMENT_REQUEST_COMPLETE_RESPONSE_CONTRACT_ID },
+  { "payment-request", "nsPaymentAddress", NS_PAYMENT_ADDRESS_CONTRACT_ID },
   { "payment-request", "nsPaymentRequestService", NS_PAYMENT_REQUEST_SERVICE_CONTRACT_ID },
   { nullptr }
 };

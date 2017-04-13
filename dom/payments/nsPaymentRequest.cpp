@@ -3,10 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsPaymentRequest.h"
+#include "nsArrayUtils.h"
 #include "nsIMutableArray.h"
 #include "nsISupportsPrimitives.h"
-#include "nsArrayUtils.h"
+#include "nsPaymentRequest.h"
+#include "nsPaymentRequestUtils.h"
 
 namespace mozilla {
 namespace dom{
@@ -20,15 +21,7 @@ nsPaymentMethodData::nsPaymentMethodData(nsIArray* aSupportedMethods,
                                          const nsAString& aData)
   : mData(aData)
 {
-  uint32_t length;
-  aSupportedMethods->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsString method;
-    nsCOMPtr<nsISupportsString> iMethod =
-      do_QueryElementAt(aSupportedMethods, index);
-    iMethod->GetData(method);
-    mSupportedMethods.AppendElement(method);
-  }
+  ConvertISupportsStringstoStrings(aSupportedMethods, mSupportedMethods);
 }
 
 nsPaymentMethodData::nsPaymentMethodData(const IPCPaymentMethodData& aMethodData)
@@ -45,15 +38,7 @@ NS_IMETHODIMP
 nsPaymentMethodData::GetSupportedMethods(nsIArray** aSupportedMethods)
 {
   NS_ENSURE_ARG_POINTER(aSupportedMethods);
-  nsCOMPtr<nsIMutableArray> methods = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (const nsString& supportedMethod : mSupportedMethods) {
-    nsCOMPtr<nsISupportsString> method =
-      do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID);
-    method->SetData(supportedMethod);
-    methods->AppendElement(method, false);
-  }
-  methods.forget(aSupportedMethods);
-  return NS_OK;
+  return ConvertStringstoISupportsStrings(mSupportedMethods, aSupportedMethods);
 }
 
 NS_IMETHODIMP
@@ -166,16 +151,9 @@ nsPaymentDetailsModifier::nsPaymentDetailsModifier(nsIArray* aSupportedMethods,
   : mTotal(aTotal)
   , mData(aData)
 {
-  uint32_t length;
-  aSupportedMethods->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsString modifier;
-    nsCOMPtr<nsISupportsString> iModifier =
-      do_QueryElementAt(aSupportedMethods, index);
-    iModifier->GetData(modifier);
-    mSupportedMethods.AppendElement(modifier);
-  }
+  ConvertISupportsStringstoStrings(aSupportedMethods, mSupportedMethods);
 
+  uint32_t length;
   aAdditionalDisplayItems->GetLength(&length);
   for (uint32_t index = 0; index < length; ++index) {
     nsCOMPtr<nsIPaymentItem> item =
@@ -204,15 +182,7 @@ NS_IMETHODIMP
 nsPaymentDetailsModifier::GetSupportedMethods(nsIArray** aSupportedMethods)
 {
   NS_ENSURE_ARG_POINTER(aSupportedMethods);
-  nsCOMPtr<nsIMutableArray> modifiers = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (const nsString& method : mSupportedMethods) {
-    nsCOMPtr<nsISupportsString> modifier =
-      do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID);
-    modifier->SetData(method);
-    modifiers->AppendElement(modifier, false);
-  }
-  modifiers.forget(aSupportedMethods);
-  return NS_OK;
+  return ConvertStringstoISupportsStrings(mSupportedMethods, aSupportedMethods);
 }
 
 NS_IMETHODIMP
