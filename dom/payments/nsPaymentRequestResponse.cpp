@@ -283,7 +283,20 @@ NS_IMETHODIMP
 nsPaymentRequestCallback::ChangeShippingOption(const nsAString& aRequestId,
                                                const nsAString& aOption)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!mParent) {
+    return NS_ERROR_UNEXPECTED;
+  }
+  if (!NS_IsMainThread()) {
+    nsCOMPtr<nsIPaymentRequestCallback> self = this;
+    nsString requestId(aRequestId);
+    nsString option(aOption);
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction([self, requestId, option] ()
+    {
+      self->ChangeShippingOption(requestId, option);
+    });
+    return NS_DispatchToMainThread(r);
+  }
+  return mParent->ChangeShippingOption(aRequestId, aOption);
 }
 } // end of namespace dom
 } // end of namespace mozilla

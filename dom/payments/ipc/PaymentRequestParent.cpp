@@ -255,7 +255,15 @@ nsresult
 PaymentRequestParent::ChangeShippingOption(const nsAString& aRequestId,
                                            const nsAString& aOption)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (mActorDestroyed) {
+    return NS_ERROR_FAILURE;
+  }
+  nsString requestId(aRequestId);
+  nsString option(aOption);
+  if (!SendChangeShippingOption(requestId, option)) {
+    return NS_ERROR_FAILURE;
+  }
+  return NS_OK;
 }
 } // end of namespace dom
 } // end of namespace mozilla
