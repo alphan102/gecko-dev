@@ -12,15 +12,32 @@
 namespace mozilla {
 namespace dom {
 
+NS_IMPL_CYCLE_COLLECTION_CLASS(PaymentRequest)
 
-// [TODO] Revisit here once |mPaymentAddress| is declared
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(PaymentRequest,
+                                               DOMEventTargetHelper)
+  // Don't need NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER because
+  // DOMEventTargetHelper does it for us.
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(PaymentRequest,
+                                                  DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mResponse)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mShippingAddress)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(PaymentRequest,
+                                                DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mResponse)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mShippingAddress)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(PaymentRequest)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(PaymentRequest, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(PaymentRequest, DOMEventTargetHelper)
-
-
 
 bool
 PaymentRequest::IsVaildNumber(const nsAString& aItem,
@@ -132,6 +149,7 @@ PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)
   : DOMEventTargetHelper(aWindow)
   , mWindow(aWindow)
   , mState(eUnknown)
+  , mShippingAddress(nullptr)
 {
   // Generate a unique id for identification
   nsID uuid;
@@ -142,6 +160,7 @@ PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)
 
   mState = eCreated;
 }
+
 
 already_AddRefed<Promise>
 PaymentRequest::Show(ErrorResult& aRv)
@@ -310,7 +329,29 @@ PaymentRequest::SetId(const nsAString& aId)
 already_AddRefed<PaymentAddress>
 PaymentRequest::GetShippingAddress() const
 {
-  return nullptr;
+  RefPtr<PaymentAddress> address = mShippingAddress;
+  return address.forget();
+}
+
+void
+PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
+                                      nsTArray<nsString>& aAddressLine,
+                                      const nsAString& aRegion,
+                                      const nsAString& aCity,
+                                      const nsAString& aDependentLocality,
+                                      const nsAString& aPostalCode,
+                                      const nsAString& aSortingCode,
+                                      const nsAString& aLanguageCode,
+                                      const nsAString& aOrganization,
+                                      const nsAString& aRecipient,
+                                      const nsAString& aPhone)
+{
+  mShippingAddress = new PaymentAddress(mWindow, aCountry, aAddressLine,
+                                        aRegion, aCity, aDependentLocality,
+                                        aPostalCode, aSortingCode, aLanguageCode,
+                                        aOrganization, aRecipient, aPhone);
+
+  // TODO : Fire shippingaddresschange event
 }
 
 void

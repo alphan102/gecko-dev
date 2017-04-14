@@ -31,6 +31,8 @@ class PaymentRequest final : public DOMEventTargetHelper
 public:
   NS_DECL_ISUPPORTS_INHERITED
 
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(PaymentRequest, DOMEventTargetHelper)
+
   PaymentRequest(nsPIDOMWindowInner* aWindow);
 
   nsPIDOMWindowInner* GetParentObject() const
@@ -77,6 +79,18 @@ public:
   void SetId(const nsAString& aId);
 
   already_AddRefed<PaymentAddress> GetShippingAddress() const;
+  // Update mShippingAddress and fire shippingaddresschange event
+  void UpdateShippingAddress(const nsAString& aCountry,
+                             nsTArray<nsString>& aAddressLine,
+                             const nsAString& aRegion,
+                             const nsAString& aCity,
+                             const nsAString& aDependentLocality,
+                             const nsAString& aPostalCode,
+                             const nsAString& aSortingCode,
+                             const nsAString& aLanguageCode,
+                             const nsAString& aOrganization,
+                             const nsAString& aRecipient,
+                             const nsAString& aPhone);
   void GetShippingOption(nsAString& aRetVal) const;
 
   Nullable<PaymentShippingType> GetShippingType() const;
@@ -103,6 +117,9 @@ protected:
   RefPtr<Promise> mAbortPromise;
   // Resolve mAcceptPromise with mResponse if user accepts the request.
   RefPtr<PaymentResponse> mResponse;
+  // It is populated when the user provides a shipping address.
+  RefPtr<PaymentAddress> mShippingAddress;
+
   enum {
     eUnknown,
     eCreated,
