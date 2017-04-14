@@ -50,8 +50,13 @@ PaymentRequestChild::RecvChangeShippingAddress(const nsString& aRequestId,
 
 mozilla::ipc::IPCResult
 PaymentRequestChild::RecvChangeShippingOption(const nsString& aRequestId,
-                                              const nsString& option)
+                                              const nsString& aOption)
 {
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  MOZ_ASSERT(manager);
+  if (NS_FAILED(manager->ChangeShippingOption(aRequestId, aOption))) {
+    return IPC_FAIL_NO_REASON(this);
+  }
   return IPC_OK();
 }
 

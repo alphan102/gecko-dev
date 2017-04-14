@@ -234,7 +234,18 @@ NS_IMETHODIMP
 nsPaymentRequestService::ChangeShippingOption(const nsAString& aRequestId,
                                               const nsAString& aOption)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIPaymentRequest> request;
+  nsresult rv = GetPaymentRequestById(aRequestId, getter_AddRefs(request));
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIPaymentRequestCallback> callback;
+  rv = request->GetCallback(getter_AddRefs(callback));
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
+  callback->ChangeShippingOption(aRequestId, aOption);
+  return NS_OK;
 }
 
 } // end of namespace dom
