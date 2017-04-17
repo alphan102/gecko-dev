@@ -147,9 +147,8 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
 
 PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)
   : DOMEventTargetHelper(aWindow)
-  , mWindow(aWindow)
-  , mState(eUnknown)
   , mShippingAddress(nullptr)
+  , mState(eUnknown)
 {
   // Generate a unique id for identification
   nsID uuid;
@@ -170,7 +169,7 @@ PaymentRequest::Show(ErrorResult& aRv)
     return nullptr;
   }
 
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(GetOwner());
   ErrorResult result;
   RefPtr<Promise> promise = Promise::Create(global, result);
   if (result.Failed()) {
@@ -203,7 +202,7 @@ PaymentRequest::RespondShowPayment(bool aAccept,
   // TODO : need to add aDetails into paymentResponse
   // TODO : need to add shipping option, hard-code "AIR" here
   RefPtr<PaymentResponse> paymentResponse =
-    new PaymentResponse(mWindow, mInternalId, mId, aMethodName,
+    new PaymentResponse(GetOwner(), mInternalId, mId, aMethodName,
                         NS_LITERAL_STRING("AIR"), aPayerName,
                         aPayerEmail, aPayerPhone);
   mResponse = paymentResponse;
@@ -233,7 +232,7 @@ PaymentRequest::CanMakePayment(ErrorResult& aRv)
     return nullptr;
   }
 
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(GetOwner());
   ErrorResult result;
   RefPtr<Promise> promise = Promise::Create(global, result);
   if (result.Failed()) {
