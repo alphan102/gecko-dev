@@ -20,7 +20,18 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(PaymentAddress)
 
-  PaymentAddress();
+  PaymentAddress(nsPIDOMWindowInner* aWindow,
+                 const nsAString& aCountry,
+                 nsTArray<nsString>& aAddressLine,
+                 const nsAString& aRegion,
+                 const nsAString& aCity,
+                 const nsAString& aDependentLocality,
+                 const nsAString& aPostalCode,
+                 const nsAString& aSortingCode,
+                 const nsAString& aLanguageCode,
+                 const nsAString& aOrganization,
+                 const nsAString& aRecipient,
+                 const nsAString& aPhone);
 
   nsPIDOMWindowInner* GetParentObject() const
   {
@@ -31,30 +42,42 @@ public:
                                JS::Handle<JSObject*> aGivenProto) override;
 
   // Getter functions
-  void GetCountry(nsAString& aRetVal) const { }
+  void GetCountry(nsAString& aRetVal) const;
 
-  void GetAddressLine(nsTArray<nsString>& aRetVal) const { }
+  void GetAddressLine(nsTArray<nsString>& aRetVal) const;
 
-  void GetRegion(nsAString& aRetVal) const { }
+  void GetRegion(nsAString& aRetVal) const;
 
-  void GetCity(nsAString& aRetVal) const { }
+  void GetCity(nsAString& aRetVal) const;
 
-  void GetDependentLocality(nsAString& aRetVal) const { }
+  void GetDependentLocality(nsAString& aRetVal) const;
 
-  void GetPostalCode(nsAString& aRetVal) const { }
+  void GetPostalCode(nsAString& aRetVal) const;
 
-  void GetSortingCode(nsAString& aRetVal) const { }
+  void GetSortingCode(nsAString& aRetVal) const;
 
-  void GetLanguageCode(nsAString& aRetVal) const { }
+  void GetLanguageCode(nsAString& aRetVal) const;
 
-  void GetOrganization(nsAString& aRetVal) const { }
+  void GetOrganization(nsAString& aRetVal) const;
 
-  void GetRecipient(nsAString& aRetVal) const { }
+  void GetRecipient(nsAString& aRetVal) const;
 
-  void GetPhone(nsAString& aRetVal) const { }
+  void GetPhone(nsAString& aRetVal) const;
 
 private:
   ~PaymentAddress();
+
+  nsString mCountry;
+  nsTArray<nsString> mAddressLine;
+  nsString mRegion;
+  nsString mCity;
+  nsString mDependentLocality;
+  nsString mPostalCode;
+  nsString mSortingCode;
+  nsString mLanguageCode;
+  nsString mOrganization;
+  nsString mRecipient;
+  nsString mPhone;
 
   nsCOMPtr<nsPIDOMWindowInner> mOwner;
 };
