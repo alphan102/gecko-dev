@@ -101,8 +101,6 @@ public:
 protected:
   ~PaymentRequest();
 
-  nsCOMPtr<nsPIDOMWindowInner> mWindow;
-
   // Id for internal identification
   nsString mInternalId;
   // Id for communicating with merchant side
