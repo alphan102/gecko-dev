@@ -273,7 +273,7 @@ PaymentRequest::Abort(ErrorResult& aRv)
     return nullptr;
   }
 
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mWindow);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(GetOwner());
   ErrorResult result;
   RefPtr<Promise> promise = Promise::Create(global, result);
   if (result.Failed()) {
@@ -345,7 +345,7 @@ PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
                                       const nsAString& aRecipient,
                                       const nsAString& aPhone)
 {
-  mShippingAddress = new PaymentAddress(mWindow, aCountry, aAddressLine,
+  mShippingAddress = new PaymentAddress(GetOwner(), aCountry, aAddressLine,
                                         aRegion, aCity, aDependentLocality,
                                         aPostalCode, aSortingCode, aLanguageCode,
                                         aOrganization, aRecipient, aPhone);
