@@ -38,7 +38,7 @@ nsPaymentAddress::Init(const nsAString& aCountry,
   mOrganization = aOrganization;
   mRecipient = aRecipient;
   mPhone = aPhone;
-  return ConvertISupportsStringstoStrings(aAddressLine, mAddressLine);;
+  return ConvertISupportsStringstoStrings(aAddressLine, mAddressLine);
 }
 
 nsresult

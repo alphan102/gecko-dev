@@ -370,11 +370,25 @@ nsresult
 PaymentRequestManager::UpdatePayment(const nsAString& aRequestId,
                                      const PaymentDetailsUpdate& aDetails)
 {
-  /*
-   *  TODO: Create and initialize a PaymentRequestUpdateRequest, then send the
-   *        request to chrome process by gPaymentRequestChild
-   */
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!gPaymentRequestChild) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (!request) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  nsresult rv;
+  IPCPaymentDetails details = ConvertDetailsUpdate(aDetails, rv);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  nsString requestId(aRequestId);
+  PaymentRequestUpdateRequest paymentAction(requestId, details);
+  gPaymentRequestChild->SendRequestPayment(paymentAction);
+  return NS_OK;
 }
 
 nsresult

@@ -149,6 +149,23 @@ nsPaymentRequestService::RequestPayment(nsIPaymentRequestRequest* aRequest)
       RespondPayment(response);
       break;
     }
+    case nsIPaymentRequestRequest::UPDATE_REQUEST: {
+      nsCOMPtr<nsIPaymentRequestUpdateRequest> request = do_QueryInterface(aRequest);
+      nsString requestId;
+      nsCOMPtr<nsIPaymentDetails> details;
+      request->GetRequestId(requestId);
+      request->GetDetails(getter_AddRefs(details));
+      nsCOMPtr<nsIPaymentRequest> payment;
+      GetPaymentRequestById(requestId, getter_AddRefs(payment));
+      if (!payment) {
+        return NS_ERROR_UNEXPECTED;
+      }
+      payment->UpdatePaymentDetails(details);
+      /*
+       *  TODO: Launch/inform payment UI here once the UI module is implemented.
+       */
+      break;
+    }
     case nsIPaymentRequestRequest::COMPLETE_REQUEST: {
       /*
        *  TODO: Inform payment UI once the UI module is implemented.

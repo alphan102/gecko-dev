@@ -90,7 +90,18 @@ PaymentRequestParent::RecvRequestPayment(const PaymentRequestRequest& aRequest)
       break;
     }
     case PaymentRequestRequest::TPaymentRequestUpdateRequest: {
-      return IPC_FAIL(this, "Not yet implemented");
+      PaymentRequestUpdateRequest request = aRequest;
+
+      nsCOMPtr<nsIPaymentDetails> nsDetails =
+        new nsPaymentDetails(request.details());
+
+      nsCOMPtr<nsIPaymentRequestUpdateRequest> updateRequest =
+        do_CreateInstance(NS_PAYMENT_REQUEST_UPDATE_REQUEST_CONTRACT_ID);
+      updateRequest->InitRequest(request.requestId(),
+                                 callback,
+                                 nsDetails);
+      nsrequest = do_QueryInterface(updateRequest);
+      break;
     }
     case PaymentRequestRequest::TPaymentRequestCompleteRequest: {
       PaymentRequestCompleteRequest request = aRequest;

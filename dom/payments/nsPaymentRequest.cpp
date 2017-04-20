@@ -602,6 +602,47 @@ nsPaymentRequest::GetPaymentDetails(nsIPaymentDetails** aPaymentDetails)
 }
 
 NS_IMETHODIMP
+nsPaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails)
+{
+  nsString id;
+  nsCOMPtr<nsIPaymentItem> totalItem;
+  nsCOMPtr<nsIArray> displayedItems;
+  nsCOMPtr<nsIArray> shippingOptions;
+  nsCOMPtr<nsIArray> modifiers;
+  nsString error;
+  /*
+   * According to the spec [1], update the attributes if they present in new
+   * details (i.e., PaymentDetailsUpdate); otherwise, keep original value.
+   * Note |id| comes only from initial details (i.e., PaymentDetailsInit) and
+   * |error| only from new details.
+   *
+   *   [1] https://www.w3.org/TR/payment-request/#updatewith-method
+   */
+  mPaymentDetails->GetId(id);
+  aPaymentDetails->GetTotalItem(getter_AddRefs(totalItem));
+  if (!totalItem) {
+    mPaymentDetails->GetTotalItem(getter_AddRefs(totalItem));
+  }
+  aPaymentDetails->GetDisplayItems(getter_AddRefs(displayedItems));
+  if (!displayedItems) {
+    mPaymentDetails->GetDisplayItems(getter_AddRefs(displayedItems));
+  }
+  aPaymentDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
+  if (!shippingOptions) {
+    mPaymentDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
+  }
+  aPaymentDetails->GetModifiers(getter_AddRefs(modifiers));
+  if (!modifiers) {
+    mPaymentDetails->GetModifiers(getter_AddRefs(modifiers));
+  }
+  aPaymentDetails->GetError(error);
+
+  mPaymentDetails = new nsPaymentDetails(id, totalItem, displayedItems,
+                                         shippingOptions, modifiers, error);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsPaymentRequest::GetPaymentOptions(nsIPaymentOptions** aPaymentOptions)
 {
   NS_ENSURE_ARG_POINTER(aPaymentOptions);
