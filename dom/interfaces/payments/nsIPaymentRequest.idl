@@ -79,4 +79,6 @@ interface nsIPaymentRequest : nsISupports
   readonly attribute nsIPaymentDetails paymentDetails;
   readonly attribute nsIPaymentOptions paymentOptions;
   attribute nsIPaymentRequestCallback callback;
+
+  void updatePaymentDetails(in nsIPaymentDetails aDetails);
 };
