@@ -102,18 +102,18 @@ nsPaymentRequestCreateRequest::GetDetails(nsIPaymentDetails** aDetails)
   NS_ENSURE_ARG_POINTER(aDetails);
   nsString id;
   nsCOMPtr<nsIPaymentItem> totalItem;
-  nsCOMPtr<nsIArray> displayedItems;
+  nsCOMPtr<nsIArray> displayItems;
   nsCOMPtr<nsIArray> shippingOptions;
   nsCOMPtr<nsIArray> modifiers;
   nsString error;
   mDetails->GetId(id);
   mDetails->GetTotalItem(getter_AddRefs(totalItem));
-  mDetails->GetDisplayItems(getter_AddRefs(displayedItems));
+  mDetails->GetDisplayItems(getter_AddRefs(displayItems));
   mDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
   mDetails->GetModifiers(getter_AddRefs(modifiers));
   mDetails->GetError(error);
   nsCOMPtr<nsIPaymentDetails> details =
-    new nsPaymentDetails(id, totalItem, displayedItems, shippingOptions, modifiers, error);
+    new nsPaymentDetails(id, totalItem, displayItems, shippingOptions, modifiers, error);
   details.forget(aDetails);
   return NS_OK;
 }
@@ -164,18 +164,18 @@ nsPaymentRequestUpdateRequest::GetDetails(nsIPaymentDetails** aDetails)
   NS_ENSURE_ARG_POINTER(aDetails);
   nsString id;
   nsCOMPtr<nsIPaymentItem> totalItem;
-  nsCOMPtr<nsIArray> displayedItems;
+  nsCOMPtr<nsIArray> displayItems;
   nsCOMPtr<nsIArray> shippingOptions;
   nsCOMPtr<nsIArray> modifiers;
   nsString error;
   mDetails->GetId(id);
   mDetails->GetTotalItem(getter_AddRefs(totalItem));
-  mDetails->GetDisplayItems(getter_AddRefs(displayedItems));
+  mDetails->GetDisplayItems(getter_AddRefs(displayItems));
   mDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
   mDetails->GetModifiers(getter_AddRefs(modifiers));
   mDetails->GetError(error);
   nsCOMPtr<nsIPaymentDetails> details =
-    new nsPaymentDetails(id, totalItem, displayedItems, shippingOptions, modifiers, error);
+    new nsPaymentDetails(id, totalItem, displayItems, shippingOptions, modifiers, error);
   details.forget(aDetails);
   return NS_OK;
 }

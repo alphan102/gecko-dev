@@ -585,18 +585,18 @@ nsPaymentRequest::GetPaymentDetails(nsIPaymentDetails** aPaymentDetails)
   NS_ENSURE_ARG_POINTER(aPaymentDetails);
   nsString id;
   nsCOMPtr<nsIPaymentItem> totalItem;
-  nsCOMPtr<nsIArray> displayedItems;
+  nsCOMPtr<nsIArray> displayItems;
   nsCOMPtr<nsIArray> shippingOptions;
   nsCOMPtr<nsIArray> modifiers;
   nsString error;
   mPaymentDetails->GetId(id);
   mPaymentDetails->GetTotalItem(getter_AddRefs(totalItem));
-  mPaymentDetails->GetDisplayItems(getter_AddRefs(displayedItems));
+  mPaymentDetails->GetDisplayItems(getter_AddRefs(displayItems));
   mPaymentDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
   mPaymentDetails->GetModifiers(getter_AddRefs(modifiers));
   mPaymentDetails->GetError(error);
   nsCOMPtr<nsIPaymentDetails> details =
-    new nsPaymentDetails(id, totalItem, displayedItems, shippingOptions, modifiers, error);
+    new nsPaymentDetails(id, totalItem, displayItems, shippingOptions, modifiers, error);
   details.forget(aPaymentDetails);
   return NS_OK;
 }
@@ -606,7 +606,7 @@ nsPaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails)
 {
   nsString id;
   nsCOMPtr<nsIPaymentItem> totalItem;
-  nsCOMPtr<nsIArray> displayedItems;
+  nsCOMPtr<nsIArray> displayItems;
   nsCOMPtr<nsIArray> shippingOptions;
   nsCOMPtr<nsIArray> modifiers;
   nsString error;
@@ -623,9 +623,9 @@ nsPaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails)
   if (!totalItem) {
     mPaymentDetails->GetTotalItem(getter_AddRefs(totalItem));
   }
-  aPaymentDetails->GetDisplayItems(getter_AddRefs(displayedItems));
-  if (!displayedItems) {
-    mPaymentDetails->GetDisplayItems(getter_AddRefs(displayedItems));
+  aPaymentDetails->GetDisplayItems(getter_AddRefs(displayItems));
+  if (!displayItems) {
+    mPaymentDetails->GetDisplayItems(getter_AddRefs(displayItems));
   }
   aPaymentDetails->GetShippingOptions(getter_AddRefs(shippingOptions));
   if (!shippingOptions) {
@@ -637,7 +637,7 @@ nsPaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails)
   }
   aPaymentDetails->GetError(error);
 
-  mPaymentDetails = new nsPaymentDetails(id, totalItem, displayedItems,
+  mPaymentDetails = new nsPaymentDetails(id, totalItem, displayItems,
                                          shippingOptions, modifiers, error);
   return NS_OK;
 }
