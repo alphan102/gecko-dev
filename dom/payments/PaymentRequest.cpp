@@ -197,7 +197,7 @@ PaymentRequest::RespondShowPayment(bool aAccept,
                                    const nsAString& aPayerEmail,
                                    const nsAString& aPayerPhone)
 {
-  MOZ_ASSERT(!mAcceptPromise);
+  MOZ_ASSERT(mAcceptPromise);
 
   // TODO : need to add aDetails into paymentResponse
   // TODO : need to add shipping option, hard-code "AIR" here
@@ -214,7 +214,7 @@ PaymentRequest::RespondShowPayment(bool aAccept,
 void
 PaymentRequest::RespondComplete()
 {
-  MOZ_ASSERT(!mResponse);
+  MOZ_ASSERT(mResponse);
 
   mResponse->RespondComplete();
 }
@@ -254,7 +254,7 @@ PaymentRequest::CanMakePayment(ErrorResult& aRv)
 void
 PaymentRequest::RespondCanMakePayment(bool aResult)
 {
-  MOZ_ASSERT(!mResultPromise);
+  MOZ_ASSERT(mResultPromise);
 
   mResultPromise->MaybeResolve(aResult);
   mResultPromise = nullptr;
@@ -295,7 +295,7 @@ PaymentRequest::Abort(ErrorResult& aRv)
 void
 PaymentRequest::RespondAbortPayment(bool aSuccess)
 {
-  MOZ_ASSERT(!mAbortPromise);
+  MOZ_ASSERT(mAbortPromise);
 
   if (aSuccess) {
     mAbortPromise->MaybeResolve(JS::UndefinedHandleValue);
