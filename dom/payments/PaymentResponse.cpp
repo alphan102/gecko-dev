@@ -120,7 +120,7 @@ PaymentResponse::Complete(PaymentComplete result, ErrorResult& aRv)
 void
 PaymentResponse::RespondComplete()
 {
-  MOZ_ASSERT(!mPromise);
+  MOZ_ASSERT(mPromise);
 
   mPromise->MaybeResolve(JS::UndefinedHandleValue);
   mPromise = nullptr;
