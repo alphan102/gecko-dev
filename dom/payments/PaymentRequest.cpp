@@ -332,9 +332,9 @@ PaymentRequest::GetShippingAddress() const
   return address.forget();
 }
 
-void
+nsresult
 PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
-                                      nsTArray<nsString>& aAddressLine,
+                                      const nsTArray<nsString>& aAddressLine,
                                       const nsAString& aRegion,
                                       const nsAString& aCity,
                                       const nsAString& aDependentLocality,
@@ -351,6 +351,7 @@ PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
                                         aOrganization, aRecipient, aPhone);
 
   // TODO : Fire shippingaddresschange event
+  return NS_OK;
 }
 
 void

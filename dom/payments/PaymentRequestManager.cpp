@@ -486,12 +486,17 @@ PaymentRequestManager::ChangeShippingAddress(const nsAString& aRequestId,
   if (!request) {
     return NS_ERROR_UNEXPECTED;
   }
-  /*
-   *  TODO: Once receive shipping address change from parent side,
-   *        this method is called to create and emit a PaymentRequestUpdateEvent
-   *        to inform the website.
-   */
-  return NS_OK;
+  return request->UpdateShippingAddress(aAddress.country(),
+                                        aAddress.addressLine(),
+                                        aAddress.region(),
+                                        aAddress.city(),
+                                        aAddress.dependentLocality(),
+                                        aAddress.postalCode(),
+                                        aAddress.sortingCode(),
+                                        aAddress.languageCode(),
+                                        aAddress.organization(),
+                                        aAddress.recipient(),
+                                        aAddress.phone());
 }
 
 nsresult
