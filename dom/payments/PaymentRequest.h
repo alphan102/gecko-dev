@@ -80,17 +80,17 @@ public:
 
   already_AddRefed<PaymentAddress> GetShippingAddress() const;
   // Update mShippingAddress and fire shippingaddresschange event
-  void UpdateShippingAddress(const nsAString& aCountry,
-                             nsTArray<nsString>& aAddressLine,
-                             const nsAString& aRegion,
-                             const nsAString& aCity,
-                             const nsAString& aDependentLocality,
-                             const nsAString& aPostalCode,
-                             const nsAString& aSortingCode,
-                             const nsAString& aLanguageCode,
-                             const nsAString& aOrganization,
-                             const nsAString& aRecipient,
-                             const nsAString& aPhone);
+  nsresult UpdateShippingAddress(const nsAString& aCountry,
+                                 const nsTArray<nsString>& aAddressLine,
+                                 const nsAString& aRegion,
+                                 const nsAString& aCity,
+                                 const nsAString& aDependentLocality,
+                                 const nsAString& aPostalCode,
+                                 const nsAString& aSortingCode,
+                                 const nsAString& aLanguageCode,
+                                 const nsAString& aOrganization,
+                                 const nsAString& aRecipient,
+                                 const nsAString& aPhone);
   void GetShippingOption(nsAString& aRetVal) const;
 
   Nullable<PaymentShippingType> GetShippingType() const;

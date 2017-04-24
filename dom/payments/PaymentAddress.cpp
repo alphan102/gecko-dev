@@ -22,7 +22,7 @@ NS_INTERFACE_MAP_END
 
 PaymentAddress::PaymentAddress(nsPIDOMWindowInner* aWindow,
                                const nsAString& aCountry,
-                               nsTArray<nsString>& aAddressLine,
+                               const nsTArray<nsString>& aAddressLine,
                                const nsAString& aRegion,
                                const nsAString& aCity,
                                const nsAString& aDependentLocality,
