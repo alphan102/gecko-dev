@@ -77,6 +77,79 @@ PaymentRequest::IsPositiveNumber(const nsAString& aItem,
   return true;
 }
 
+bool
+PaymentRequest::IsVaildDetailsInit(const PaymentDetailsInit& aDetails, nsAString& aErrorMsg)
+{
+  // Check the amount.value of detail.total
+  if (!IsPositiveNumber(NS_LITERAL_STRING("details.total"),
+                        aDetails.mTotal.mAmount.mValue, aErrorMsg)) {
+    return false;
+  }
+
+  return IsVaildDetailsBase(aDetails, aErrorMsg);
+}
+
+bool
+PaymentRequest::IsVaildDetailsUpdate(const PaymentDetailsUpdate& aDetails)
+{
+  nsString message;
+  // Check the amount.value of detail.total
+  if (!IsPositiveNumber(NS_LITERAL_STRING("details.total"),
+                        aDetails.mTotal.mAmount.mValue, message)) {
+    return false;
+  }
+
+  return IsVaildDetailsBase(aDetails, message);
+}
+
+bool
+PaymentRequest::IsVaildDetailsBase(const PaymentDetailsBase& aDetails, nsAString& aErrorMsg)
+{
+  // Check the amount.value of each item in the display items
+  if (aDetails.mDisplayItems.WasPassed()) {
+    const Sequence<PaymentItem>& displayItems = aDetails.mDisplayItems.Value();
+    for (const PaymentItem& displayItem : displayItems) {
+      if (!IsVaildNumber(displayItem.mLabel,
+                         displayItem.mAmount.mValue, aErrorMsg)) {
+        return false;
+      }
+    }
+  }
+
+  // Check the shipping option
+  if (aDetails.mShippingOptions.WasPassed()) {
+    const Sequence<PaymentShippingOption>& shippingOptions = aDetails.mShippingOptions.Value();
+    for (const PaymentShippingOption& shippingOption : shippingOptions) {
+      if (!IsVaildNumber(NS_LITERAL_STRING("details.shippingOptions"),
+                         shippingOption.mAmount.mValue, aErrorMsg)) {
+        return false;
+      }
+    }
+  }
+
+  // Check payment details modifiers
+  if (aDetails.mModifiers.WasPassed()) {
+    const Sequence<PaymentDetailsModifier>& modifiers = aDetails.mModifiers.Value();
+    for (const PaymentDetailsModifier& modifier : modifiers) {
+      if (!IsPositiveNumber(NS_LITERAL_STRING("details.modifiers.total"),
+                            modifier.mTotal.mAmount.mValue, aErrorMsg)) {
+        return false;
+      }
+      if (modifier.mAdditionalDisplayItems.WasPassed()) {
+        const Sequence<PaymentItem>& displayItems = modifier.mAdditionalDisplayItems.Value();
+        for (const PaymentItem& displayItem : displayItems) {
+          if (!IsVaildNumber(displayItem.mLabel,
+                             displayItem.mAmount.mValue, aErrorMsg)) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 already_AddRefed<PaymentRequest>
 PaymentRequest::Constructor(const GlobalObject& aGlobal,
                             const Sequence<PaymentMethodData>& aMethodData,
@@ -92,49 +165,17 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
 
   // Check payment methods is done by webidl
 
-  // Check the amount.value of detail.total
+  // Check payment details
   nsString message;
-  if (!IsPositiveNumber(NS_LITERAL_STRING("details.total"),
-                        aDetails.mTotal.mAmount.mValue, message)) {
+  if (!IsVaildDetailsInit(aDetails, message)) {
     aRv.ThrowTypeError<MSG_ILLEGAL_PR_CONSTRUCTOR>(message);
     return nullptr;
   }
 
-  // Check the amount.value of each item in the display items
-  if (aDetails.mDisplayItems.WasPassed()) {
-    const Sequence<PaymentItem>& displayItems = aDetails.mDisplayItems.Value();
-    for (const PaymentItem& displayItem : displayItems) {
-      if (!IsVaildNumber(displayItem.mLabel,
-                         displayItem.mAmount.mValue, message)) {
-        aRv.ThrowTypeError<MSG_ILLEGAL_PR_CONSTRUCTOR>(message);
-        return nullptr;
-      }
-    }
-  }
-
-  // Check the shipping option
-  if (aDetails.mShippingOptions.WasPassed()) {
-    const Sequence<PaymentShippingOption>& shippingOptions = aDetails.mShippingOptions.Value();
-    for (const PaymentShippingOption& shippingOption : shippingOptions) {
-      if (!IsVaildNumber(NS_LITERAL_STRING("details.shippingOptions"),
-                         shippingOption.mAmount.mValue, message)) {
-        aRv.ThrowTypeError<MSG_ILLEGAL_PR_CONSTRUCTOR>(message);
-        return nullptr;
-      }
-    }
-  }
-
-  // Check payment details modifiers
-  if (aDetails.mModifiers.WasPassed()) {
-    const Sequence<PaymentDetailsModifier>& modifiers = aDetails.mModifiers.Value();
-    for (const PaymentDetailsModifier& modifier : modifiers) {
-      if (!IsPositiveNumber(NS_LITERAL_STRING("details.modifiers.total"),
-                            modifier.mTotal.mAmount.mValue, message)) {
-        aRv.ThrowTypeError<MSG_ILLEGAL_PR_CONSTRUCTOR>(message);
-        return nullptr;
-      }
-    }
-  }
+  // [TODO]
+  // If the data member of modifier is present,
+  // let serializedData be the result of JSON-serializing modifier.data into a string.
+  // null if it is not.
 
   RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
 
@@ -148,6 +189,8 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
 PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)
   : DOMEventTargetHelper(aWindow)
   , mShippingAddress(nullptr)
+  , mUpdating(false)
+  , mUpdateError(NS_OK)
   , mState(eUnknown)
 {
   // Generate a unique id for identification
@@ -174,6 +217,7 @@ PaymentRequest::Show(ErrorResult& aRv)
   RefPtr<Promise> promise = Promise::Create(global, result);
   if (result.Failed()) {
     aRv.Throw(NS_ERROR_FAILURE);
+    mState = eClosed;
     return nullptr;
   }
 
@@ -181,6 +225,7 @@ PaymentRequest::Show(ErrorResult& aRv)
   nsresult rv = manager->ShowPayment(mInternalId);
   if (NS_FAILED(rv)) {
     promise->MaybeReject(NS_ERROR_FAILURE);
+    mState = eClosed;
     return promise.forget();
   }
 
@@ -189,24 +234,57 @@ PaymentRequest::Show(ErrorResult& aRv)
   return promise.forget();
 }
 
+nsresult
+PaymentRequest::UpdatePayment(const PaymentDetailsUpdate& aDetails)
+{
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  return manager->UpdatePayment(mInternalId, aDetails);
+}
+
+void
+PaymentRequest::AbortUpdate(nsresult aRv)
+{
+  MOZ_ASSERT(NS_FAILED(aRv));
+
+  // Close down any remaining user interface.
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
+  nsresult rv = manager->AbortPayment(mInternalId);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  // Remember update error |aRv| and do the following steps in RespondShowPayment.
+  // 1. Set target.state to closed
+  // 2. Reject the promise target.acceptPromise with exception "aRv"
+  // 3. Abort the algorithm with update error
+  mUpdateError = aRv;
+}
+
 void
 PaymentRequest::RespondShowPayment(bool aAccept,
                                    const nsAString& aMethodName,
                                    const nsAString& aDetails,
                                    const nsAString& aPayerName,
                                    const nsAString& aPayerEmail,
-                                   const nsAString& aPayerPhone)
+                                   const nsAString& aPayerPhone,
+                                   nsresult aRv)
 {
   MOZ_ASSERT(mAcceptPromise);
+  MOZ_ASSERT(ReadyForUpdate());
 
-  // TODO : need to add aDetails into paymentResponse
-  // TODO : need to add shipping option, hard-code "AIR" here
-  RefPtr<PaymentResponse> paymentResponse =
-    new PaymentResponse(GetOwner(), mInternalId, mId, aMethodName,
-                        NS_LITERAL_STRING("AIR"), aPayerName,
-                        aPayerEmail, aPayerPhone);
-  mResponse = paymentResponse;
-  mAcceptPromise->MaybeResolve(paymentResponse);
+  if (aAccept) {
+    // TODO : need to add aDetails into paymentResponse
+    // TODO : need to add shipping option, hard-code "AIR" here
+    RefPtr<PaymentResponse> paymentResponse =
+      new PaymentResponse(GetOwner(), mInternalId, mId, aMethodName,
+                          NS_LITERAL_STRING("AIR"), aPayerName,
+                          aPayerEmail, aPayerPhone);
+    mResponse = paymentResponse;
+    mAcceptPromise->MaybeResolve(paymentResponse);
+  } else {
+    mAcceptPromise->MaybeReject(aRv);
+  }
+
   mState = eClosed;
   mAcceptPromise = nullptr;
 }
@@ -295,6 +373,22 @@ PaymentRequest::Abort(ErrorResult& aRv)
 void
 PaymentRequest::RespondAbortPayment(bool aSuccess)
 {
+  // Check whether we are aborting the update:
+  //
+  // - If |mUpdateError| is not NS_OK, we are aborting the update as
+  //   |mUpdateError| was set in method |AbortUpdate|.
+  //   => Reject |mAcceptPromise| and reset |mUpdateError| to complete
+  //      the action, regardless of |aSuccess|.
+  //
+  // - Otherwise, we are handling |Abort| method call from merchant.
+  //   => Resolve/Reject |mAbortPromise| based on |aSuccess|.
+  if (NS_FAILED(mUpdateError)) {
+    RespondShowPayment(false, EmptyString(), EmptyString(), EmptyString(),
+                       EmptyString(), EmptyString(), mUpdateError);
+    mUpdateError = NS_OK;
+    return;
+  }
+
   MOZ_ASSERT(mAbortPromise);
 
   if (aSuccess) {
@@ -325,11 +419,39 @@ PaymentRequest::SetId(const nsAString& aId)
   mId = aId;
 }
 
+bool
+PaymentRequest::ReadyForUpdate()
+{
+  return mState == eInteractive && !mUpdating;
+}
+
+void
+PaymentRequest::SetUpdating(bool aUpdating)
+{
+  mUpdating = aUpdating;
+}
+
 already_AddRefed<PaymentAddress>
 PaymentRequest::GetShippingAddress() const
 {
   RefPtr<PaymentAddress> address = mShippingAddress;
   return address.forget();
+}
+
+nsresult
+PaymentRequest::DispatchUpdateEvent(const nsAString& aType)
+{
+  MOZ_ASSERT(ReadyForUpdate());
+
+  PaymentRequestUpdateEventInit init;
+  init.mBubbles = false;
+  init.mCancelable = false;
+
+  RefPtr<PaymentRequestUpdateEvent> event =
+    PaymentRequestUpdateEvent::Constructor(this, aType, init);
+  event->SetTrusted(true);
+
+  return DispatchDOMEvent(nullptr, event, nullptr, nullptr);
 }
 
 nsresult
@@ -350,8 +472,8 @@ PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
                                         aPostalCode, aSortingCode, aLanguageCode,
                                         aOrganization, aRecipient, aPhone);
 
-  // TODO : Fire shippingaddresschange event
-  return NS_OK;
+  // Fire shippingaddresschange event
+  return DispatchUpdateEvent(NS_LITERAL_STRING("shippingaddresschange"));
 }
 
 void

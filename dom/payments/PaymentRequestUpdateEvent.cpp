@@ -5,27 +5,122 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/PaymentRequestUpdateEvent.h"
-#include "mozilla/dom/PaymentRequestUpdateEventBinding.h"
 
 namespace mozilla {
 namespace dom {
 
-// [TODO] Revisit here once some member requires cycle collection
+NS_IMPL_CYCLE_COLLECTION_INHERITED(PaymentRequestUpdateEvent, Event, mRequest)
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(PaymentRequestUpdateEvent, Event)
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(PaymentRequestUpdateEvent)
 NS_INTERFACE_MAP_END_INHERITING(Event)
 
 NS_IMPL_ADDREF_INHERITED(PaymentRequestUpdateEvent, Event)
 NS_IMPL_RELEASE_INHERITED(PaymentRequestUpdateEvent, Event)
 
+already_AddRefed<PaymentRequestUpdateEvent>
+PaymentRequestUpdateEvent::Constructor(mozilla::dom::EventTarget* aOwner,
+                                       const nsAString& aType,
+                                       const PaymentRequestUpdateEventInit& aEventInitDict)
+{
+  RefPtr<PaymentRequestUpdateEvent> e = new PaymentRequestUpdateEvent(aOwner);
+  bool trusted = e->Init(aOwner);
+  e->InitEvent(aType, aEventInitDict.mBubbles, aEventInitDict.mCancelable);
+  e->SetTrusted(trusted);
+  e->SetComposed(aEventInitDict.mComposed);
+  return e.forget();
+}
+
+already_AddRefed<PaymentRequestUpdateEvent>
+PaymentRequestUpdateEvent::Constructor(const GlobalObject& aGlobal,
+                                       const nsAString& aType,
+                                       const PaymentRequestUpdateEventInit& aEventInitDict,
+                                       ErrorResult& aRv)
+{
+  nsCOMPtr<mozilla::dom::EventTarget> owner = do_QueryInterface(aGlobal.GetAsSupports());
+  return Constructor(owner, aType, aEventInitDict);
+}
+
 PaymentRequestUpdateEvent::PaymentRequestUpdateEvent(EventTarget* aOwner)
   : Event(aOwner, nullptr, nullptr)
+  , mWaitForUpdate(false)
 {
-  // Add |MOZ_COUNT_CTOR(PaymentRequestUpdateEvent);| for a non-refcounted object.
+  MOZ_ASSERT(aOwner);
+
+  // event's target should be a PaymentRequest object
+  mRequest = static_cast<PaymentRequest *>(aOwner);
+}
+
+void
+PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
+{
+  MOZ_ASSERT(mRequest);
+
+  if (NS_WARN_IF(!aValue.isObject()) || !mWaitForUpdate) {
+    return;
+  }
+
+  // Converting value to a PaymentDetailsUpdate dictionary
+  PaymentDetailsUpdate details;
+  if (!details.Init(aCx, aValue)) {
+    return;
+  }
+
+  // Validate and canonicalize the details
+  if (!mRequest->IsVaildDetailsUpdate(details)) {
+    mRequest->AbortUpdate(NS_ERROR_TYPE_ERR);
+    return;
+  }
+
+  // [TODO]
+  // If the data member of modifier is present,
+  // let serializedData be the result of JSON-serializing modifier.data into a string.
+  // null if it is not.
+
+  // Update the PaymentRequest with the new details
+  if (NS_FAILED(mRequest->UpdatePayment(details))) {
+    mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
+    return;
+  }
+  mWaitForUpdate = false;
+  mRequest->SetUpdating(false);
+}
+
+void
+PaymentRequestUpdateEvent::RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
+{
+  MOZ_ASSERT(mRequest);
+
+  mRequest->AbortUpdate(NS_ERROR_DOM_ABORT_ERR);
+  mWaitForUpdate = false;
+  mRequest->SetUpdating(false);
+}
+
+void
+PaymentRequestUpdateEvent::UpdateWith(Promise& aPromise, ErrorResult& aRv)
+{
+  MOZ_ASSERT(mRequest);
+
+  if (mWaitForUpdate || !mRequest->ReadyForUpdate()) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return;
+  }
+
+  aPromise.AppendNativeHandler(this);
+  mWaitForUpdate = true;
+  mRequest->SetUpdating(true);
+}
+
+bool
+PaymentRequestUpdateEvent::IsTrusted() const
+{
+  return true;
 }
 
 PaymentRequestUpdateEvent::~PaymentRequestUpdateEvent()
 {
-  // Add |MOZ_COUNT_DTOR(PaymentRequestUpdateEvent);| for a non-refcounted object.
 }
 
 JSObject*
