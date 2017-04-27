@@ -105,6 +105,8 @@ public:
                                  const nsAString& aRecipient,
                                  const nsAString& aPhone);
   void GetShippingOption(nsAString& aRetVal) const;
+  // Update mShippingOption and fire shippingoption event
+  nsresult UpdateShippingOption(const nsAString& aShippingOption);
 
   nsresult UpdatePayment(const PaymentDetailsUpdate& aDetails);
 
@@ -134,6 +136,8 @@ protected:
   RefPtr<PaymentResponse> mResponse;
   // It is populated when the user provides a shipping address.
   RefPtr<PaymentAddress> mShippingAddress;
+  // It is populated when the user chooses a shipping option.
+  nsString mShippingOption;
 
   // "true" when there is a pending updateWith() call to update the payment request
   // and "false" otherwise.

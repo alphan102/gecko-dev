@@ -479,6 +479,16 @@ PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
 void
 PaymentRequest::GetShippingOption(nsAString& aRetVal) const
 {
+  aRetVal = mShippingOption;
+}
+
+nsresult
+PaymentRequest::UpdateShippingOption(const nsAString& aShippingOption)
+{
+  mShippingOption = aShippingOption;
+
+  // Fire shippingaddresschange event
+  return DispatchUpdateEvent(NS_LITERAL_STRING("shippingoptionchange"));
 }
 
 Nullable<PaymentShippingType>
