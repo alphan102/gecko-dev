@@ -94,7 +94,8 @@ ConvertModifier(const PaymentDetailsModifier& aModifier, nsresult& aRv)
   return IPCPaymentDetailsModifier(supportedMethods,
                                    total,
                                    additionalDisplayItems,
-                                   serializedData);
+                                   serializedData,
+                                   aModifier.mAdditionalDisplayItems.WasPassed());
 }
 
 IPCPaymentShippingOption
@@ -104,27 +105,27 @@ ConvertShippingOption(const PaymentShippingOption& aOption)
   return IPCPaymentShippingOption(aOption.mId, aOption.mLabel, amount, aOption.mSelected);
 }
 
-IPCPaymentDetails
-ConvertDetailsInit(const PaymentDetailsInit& aDetails, nsresult& aRv)
+void
+ConvertDetailsBase(const PaymentDetailsBase& aDetails,
+                   nsTArray<IPCPaymentItem>& aDisplayItems,
+                   nsTArray<IPCPaymentShippingOption>& aShippingOptions,
+                   nsTArray<IPCPaymentDetailsModifier>& aModifiers,
+                   nsresult& aRv)
 {
   aRv = NS_OK;
-  IPCPaymentItem total = ConvertItem(aDetails.mTotal);
-  nsTArray<IPCPaymentItem> displayItems;
   if (aDetails.mDisplayItems.WasPassed()) {
     for (const PaymentItem& item : aDetails.mDisplayItems.Value()) {
       IPCPaymentItem displayItem = ConvertItem(item);
-      displayItems.AppendElement(displayItem);
+      aDisplayItems.AppendElement(displayItem);
     }
   }
-  nsTArray<IPCPaymentShippingOption> shippingOptions;
   if (aDetails.mShippingOptions.WasPassed()) {
     for (const PaymentShippingOption& option : aDetails.mShippingOptions.Value()) {
       IPCPaymentShippingOption shippingOption =
         ConvertShippingOption(option);
-      shippingOptions.AppendElement(shippingOption);
+      aShippingOptions.AppendElement(shippingOption);
     }
   }
-  nsTArray<IPCPaymentDetailsModifier> modifiers;
   if (aDetails.mModifiers.WasPassed()) {
     for (const PaymentDetailsModifier& modifier : aDetails.mModifiers.Value()) {
       IPCPaymentDetailsModifier detailsModifier =
@@ -132,62 +133,74 @@ ConvertDetailsInit(const PaymentDetailsInit& aDetails, nsresult& aRv)
       if (NS_FAILED(aRv)) {
         break;
       }
-      modifiers.AppendElement(detailsModifier);
+      aModifiers.AppendElement(detailsModifier);
     }
   }
-  nsString id;
+}
+
+IPCPaymentDetails
+ConvertDetailsInit(const PaymentDetailsInit& aDetails, nsresult& aRv)
+{
+  // Convert PaymentDetailsBase members
+  nsTArray<IPCPaymentItem> displayItems;
+  nsTArray<IPCPaymentShippingOption> shippingOptions;
+  nsTArray<IPCPaymentDetailsModifier> modifiers;
+  ConvertDetailsBase(aDetails, displayItems, shippingOptions, modifiers, aRv);
+
+  // Convert |id|
+  nsString id(EmptyString());
   if (aDetails.mId.WasPassed()) {
     id = aDetails.mId.Value();
   }
+
+  // Convert required |total|
+  IPCPaymentItem total = ConvertItem(aDetails.mTotal);
+
   return IPCPaymentDetails(id,
                            total,
                            displayItems,
                            shippingOptions,
                            modifiers,
-                           EmptyString());
+                           EmptyString(), // error message
+                           aDetails.mDisplayItems.WasPassed(),
+                           aDetails.mShippingOptions.WasPassed(),
+                           aDetails.mModifiers.WasPassed());
 }
 
 IPCPaymentDetails
 ConvertDetailsUpdate(const PaymentDetailsUpdate& aDetails, nsresult& aRv)
 {
-  aRv = NS_OK;
-  IPCPaymentItem total = ConvertItem(aDetails.mTotal);
+  // Convert PaymentDetailsBase members
   nsTArray<IPCPaymentItem> displayItems;
-  if (aDetails.mDisplayItems.WasPassed()) {
-    for (const PaymentItem& item : aDetails.mDisplayItems.Value()) {
-      IPCPaymentItem displayItem = ConvertItem(item);
-      displayItems.AppendElement(displayItem);
-    }
-  }
   nsTArray<IPCPaymentShippingOption> shippingOptions;
-  if (aDetails.mShippingOptions.WasPassed()) {
-    for (const PaymentShippingOption& option : aDetails.mShippingOptions.Value()) {
-      IPCPaymentShippingOption shippingOption =
-        ConvertShippingOption(option);
-      shippingOptions.AppendElement(shippingOption);
-    }
-  }
   nsTArray<IPCPaymentDetailsModifier> modifiers;
-  if (aDetails.mModifiers.WasPassed()) {
-    for (const PaymentDetailsModifier& modifier : aDetails.mModifiers.Value()) {
-      IPCPaymentDetailsModifier detailsModifier =
-        ConvertModifier(modifier, aRv);
-      if (NS_FAILED(aRv)) {
-        break;
-      }
-      modifiers.AppendElement(detailsModifier);
-    }
-  }
-  nsString error;
+  ConvertDetailsBase(aDetails, displayItems, shippingOptions, modifiers, aRv);
+
+  // Convert |total|
+  /*
+   * Although |total| is an optional attribute in webidl, codegen still uses
+   * PaymentItem not Optional<PaymentItem> for declation in Binding.h file.
+   * That means no WasPassed() for aDetails.mTotal.
+   * If user doesn't pass |total| in JS, JavaScript engine throws TypeError
+   * while binding object.
+   */
+  IPCPaymentItem total = ConvertItem(aDetails.mTotal);
+
+  // Convert |error|
+  nsString error(EmptyString());
   if (aDetails.mError.WasPassed()) {
     error = aDetails.mError.Value();
   }
-  return IPCPaymentDetails(EmptyString(),
+
+  return IPCPaymentDetails(EmptyString(), // id
                            total,
                            displayItems,
                            shippingOptions,
                            modifiers,
-                           error);
+                           error,
+                           aDetails.mDisplayItems.WasPassed(),
+                           aDetails.mShippingOptions.WasPassed(),
+                           aDetails.mModifiers.WasPassed());
 }
 
 IPCPaymentOptions

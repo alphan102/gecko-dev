@@ -19,15 +19,16 @@ NS_IMPL_ISUPPORTS(nsPaymentMethodData,
 
 nsPaymentMethodData::nsPaymentMethodData(nsIArray* aSupportedMethods,
                                          const nsAString& aData)
-  : mData(aData)
+  : mSupportedMethods(aSupportedMethods)
+  , mData(aData)
 {
-  ConvertISupportsStringstoStrings(aSupportedMethods, mSupportedMethods);
 }
 
 nsPaymentMethodData::nsPaymentMethodData(const IPCPaymentMethodData& aMethodData)
-  : mSupportedMethods(aMethodData.supportedMethods())
-  , mData(aMethodData.data())
+  : mData(aMethodData.data())
 {
+  ConvertStringstoISupportsStrings(aMethodData.supportedMethods(),
+                                   getter_AddRefs(mSupportedMethods));
 }
 
 nsPaymentMethodData::~nsPaymentMethodData()
@@ -38,7 +39,16 @@ NS_IMETHODIMP
 nsPaymentMethodData::GetSupportedMethods(nsIArray** aSupportedMethods)
 {
   NS_ENSURE_ARG_POINTER(aSupportedMethods);
-  return ConvertStringstoISupportsStrings(mSupportedMethods, aSupportedMethods);
+  MOZ_ASSERT(mSupportedMethods);
+  nsCOMPtr<nsIMutableArray> methods = do_CreateInstance(NS_ARRAY_CONTRACTID);
+  uint32_t length;
+  mSupportedMethods->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsISupportsString> method = do_QueryElementAt(mSupportedMethods, index);
+    methods->AppendElement(method, false);
+  }
+  methods.forget(aSupportedMethods);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -148,29 +158,29 @@ nsPaymentDetailsModifier::nsPaymentDetailsModifier(nsIArray* aSupportedMethods,
                                                    nsIPaymentItem* aTotal,
                                                    nsIArray* aAdditionalDisplayItems,
                                                    const nsAString& aData)
-  : mTotal(aTotal)
+  : mSupportedMethods(aSupportedMethods)
+  , mTotal(aTotal)
+  , mAdditionalDisplayItems(aAdditionalDisplayItems)
   , mData(aData)
 {
-  ConvertISupportsStringstoStrings(aSupportedMethods, mSupportedMethods);
-
-  uint32_t length;
-  aAdditionalDisplayItems->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsIPaymentItem> item =
-      do_QueryElementAt(aAdditionalDisplayItems, index);
-    mAdditionalDisplayItems.AppendElement(item);
-  }
 }
 
 nsPaymentDetailsModifier::nsPaymentDetailsModifier(const IPCPaymentDetailsModifier& aModifier)
-  : mSupportedMethods(aModifier.supportedMethods())
+  : mAdditionalDisplayItems(nullptr)
   , mData(aModifier.data())
 {
   mTotal = new nsPaymentItem(aModifier.total());
 
-  for (const IPCPaymentItem& item : aModifier.additionalDisplayItems()) {
-    nsCOMPtr<nsIPaymentItem> iitem = new nsPaymentItem(item);
-    mAdditionalDisplayItems.AppendElement(iitem);
+  ConvertStringstoISupportsStrings(aModifier.supportedMethods(),
+                                   getter_AddRefs(mSupportedMethods));
+
+  if (aModifier.additionalDisplayItemsPassed()) {
+    nsCOMPtr<nsIMutableArray> items = do_CreateInstance(NS_ARRAY_CONTRACTID);
+    for (const IPCPaymentItem& item : aModifier.additionalDisplayItems()) {
+      nsCOMPtr<nsIPaymentItem> iitem = new nsPaymentItem(item);
+      items->AppendElement(iitem, false);
+    }
+    mAdditionalDisplayItems = items.forget();
   }
 }
 
@@ -182,7 +192,16 @@ NS_IMETHODIMP
 nsPaymentDetailsModifier::GetSupportedMethods(nsIArray** aSupportedMethods)
 {
   NS_ENSURE_ARG_POINTER(aSupportedMethods);
-  return ConvertStringstoISupportsStrings(mSupportedMethods, aSupportedMethods);
+  MOZ_ASSERT(mSupportedMethods);
+  nsCOMPtr<nsIMutableArray> methods = do_CreateInstance(NS_ARRAY_CONTRACTID);
+  uint32_t length;
+  mSupportedMethods->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsISupportsString> method = do_QueryElementAt(mSupportedMethods, index);
+    methods->AppendElement(method, false);
+  }
+  methods.forget(aSupportedMethods);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -204,9 +223,14 @@ NS_IMETHODIMP
 nsPaymentDetailsModifier::GetAdditionalDisplayItems(nsIArray** aAdditionalDisplayItems)
 {
   NS_ENSURE_ARG_POINTER(aAdditionalDisplayItems);
+  if (!mAdditionalDisplayItems) {
+    return NS_OK;
+  }
   nsCOMPtr<nsIMutableArray> items = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (uint32_t index = 0; index < mAdditionalDisplayItems.Length(); ++index) {
-    nsCOMPtr<nsIPaymentItem> item = mAdditionalDisplayItems[index];
+  uint32_t length;
+  mAdditionalDisplayItems->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsIPaymentItem> item = do_QueryElementAt(mAdditionalDisplayItems, index);
     items->AppendElement(item, false);
   }
   items.forget(aAdditionalDisplayItems);
@@ -305,50 +329,48 @@ nsPaymentDetails::nsPaymentDetails(const nsAString& aId,
                                    const nsAString& aError)
   : mId(aId)
   , mTotalItem(aTotalItem)
+  , mDisplayItems(aDisplayItems)
+  , mShippingOptions(aShippingOptions)
+  , mModifiers(aModifiers)
   , mError(aError)
 {
-  uint32_t length;
-  aDisplayItems->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsIPaymentItem> item =
-      do_QueryElementAt(aDisplayItems, index);
-    mDisplayItems.AppendElement(item);
-  }
-
-  aShippingOptions->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsIPaymentShippingOption> option =
-      do_QueryElementAt(aShippingOptions, index);
-    mShippingOptions.AppendElement(option);
-  }
-
-  aModifiers->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsIPaymentDetailsModifier> modifier =
-      do_QueryElementAt(aModifiers, index);
-    mModifiers.AppendElement(modifier);
-  }
 }
 
 nsPaymentDetails::nsPaymentDetails(const IPCPaymentDetails& aDetails)
   : mId(aDetails.id())
+  , mDisplayItems(nullptr)
+  , mShippingOptions(nullptr)
+  , mModifiers(nullptr)
   , mError(aDetails.error())
 {
   mTotalItem = new nsPaymentItem(aDetails.total());
-  for (const IPCPaymentItem& displayItem : aDetails.displayItems()) {
-    nsCOMPtr<nsIPaymentItem> item = new nsPaymentItem(displayItem);
-    mDisplayItems.AppendElement(item);
+
+  if (aDetails.displayItemsPassed()) {
+    nsCOMPtr<nsIMutableArray> items = do_CreateInstance(NS_ARRAY_CONTRACTID);
+    for (const IPCPaymentItem& displayItem : aDetails.displayItems()) {
+      nsCOMPtr<nsIPaymentItem> item = new nsPaymentItem(displayItem);
+      items->AppendElement(item, false);
+    }
+    mDisplayItems = items.forget();
   }
 
-  for (const IPCPaymentShippingOption& shippingOption : aDetails.shippingOptions()) {
-    nsCOMPtr<nsIPaymentShippingOption> option =
-      new nsPaymentShippingOption(shippingOption);
-    mShippingOptions.AppendElement(option);
+  if (aDetails.shippingOptionsPassed()) {
+    nsCOMPtr<nsIMutableArray> options = do_CreateInstance(NS_ARRAY_CONTRACTID);
+    for (const IPCPaymentShippingOption& shippingOption : aDetails.shippingOptions()) {
+      nsCOMPtr<nsIPaymentShippingOption> option =
+        new nsPaymentShippingOption(shippingOption);
+      options->AppendElement(option, false);
+    }
+    mShippingOptions = options.forget();
   }
 
-  for (const IPCPaymentDetailsModifier& modifier : aDetails.modifiers()) {
-    nsCOMPtr<nsIPaymentDetailsModifier> imodifier = new nsPaymentDetailsModifier(modifier);
-    mModifiers.AppendElement(imodifier);
+  if (aDetails.modifiersPassed()) {
+    nsCOMPtr<nsIMutableArray> modifiers = do_CreateInstance(NS_ARRAY_CONTRACTID);
+    for (const IPCPaymentDetailsModifier& modifier : aDetails.modifiers()) {
+      nsCOMPtr<nsIPaymentDetailsModifier> imodifier = new nsPaymentDetailsModifier(modifier);
+      modifiers->AppendElement(imodifier, false);
+    }
+    mModifiers = modifiers.forget();
   }
 }
 
@@ -382,15 +404,14 @@ NS_IMETHODIMP
 nsPaymentDetails::GetDisplayItems(nsIArray** aDisplayItems)
 {
   NS_ENSURE_ARG_POINTER(aDisplayItems);
+  if (!mDisplayItems) {
+    return NS_OK;
+  }
   nsCOMPtr<nsIMutableArray> items = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (uint32_t index = 0; index < mDisplayItems.Length(); ++index) {
-    nsString label;
-    nsCOMPtr<nsIPaymentCurrencyAmount> amount;
-    bool pending;
-    mDisplayItems[index]->GetLabel(label);
-    mDisplayItems[index]->GetAmount(getter_AddRefs(amount));
-    mDisplayItems[index]->GetPending(&pending);
-    nsCOMPtr<nsIPaymentItem> item = new nsPaymentItem(label, amount, pending);
+  uint32_t length;
+  mDisplayItems->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsIPaymentItem> item = do_QueryElementAt(mDisplayItems, index);
     items->AppendElement(item, false);
   }
   items.forget(aDisplayItems);
@@ -401,18 +422,14 @@ NS_IMETHODIMP
 nsPaymentDetails::GetShippingOptions(nsIArray** aShippingOptions)
 {
   NS_ENSURE_ARG_POINTER(aShippingOptions);
+  if (!mShippingOptions) {
+    return NS_OK;
+  }
   nsCOMPtr<nsIMutableArray> options = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (uint32_t index = 0; index < mShippingOptions.Length(); ++index) {
-    nsString id;
-    nsString label;
-    nsCOMPtr<nsIPaymentCurrencyAmount> amount;
-    bool selected;
-    mShippingOptions[index]->GetId(id);
-    mShippingOptions[index]->GetLabel(label);
-    mShippingOptions[index]->GetAmount(getter_AddRefs(amount));
-    mShippingOptions[index]->GetSelected(&selected);
-    nsCOMPtr<nsIPaymentShippingOption> option =
-      new nsPaymentShippingOption(id, label, amount, selected);
+  uint32_t length;
+  mShippingOptions->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsIPaymentShippingOption> option = do_QueryElementAt(mShippingOptions, index);
     options->AppendElement(option, false);
   }
   options.forget(aShippingOptions);
@@ -423,18 +440,14 @@ NS_IMETHODIMP
 nsPaymentDetails::GetModifiers(nsIArray** aModifiers)
 {
   NS_ENSURE_ARG_POINTER(aModifiers);
+  if (!mModifiers) {
+    return NS_OK;
+  }
   nsCOMPtr<nsIMutableArray> modifiers = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (uint32_t index = 0; index < mModifiers.Length(); ++index) {
-    nsCOMPtr<nsIArray> supportedModifiers;
-    nsCOMPtr<nsIPaymentItem> total;
-    nsCOMPtr<nsIArray> additionalDisplayItems;
-    nsString data;
-    mModifiers[index]->GetSupportedMethods(getter_AddRefs(supportedModifiers));
-    mModifiers[index]->GetTotal(getter_AddRefs(total));
-    mModifiers[index]->GetAdditionalDisplayItems(getter_AddRefs(additionalDisplayItems));
-    mModifiers[index]->GetData(data);
-    nsCOMPtr<nsIPaymentDetailsModifier> modifier =
-      new nsPaymentDetailsModifier(supportedModifiers, total, additionalDisplayItems, data);
+  uint32_t length;
+  mModifiers->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsIPaymentDetailsModifier> modifier = do_QueryElementAt(mModifiers, index);
     modifiers->AppendElement(modifier, false);
   }
   modifiers.forget(aModifiers);
@@ -530,16 +543,10 @@ nsPaymentRequest::nsPaymentRequest(const uint64_t aTabId,
                                    nsIPaymentOptions* aPaymentOptions)
   : mTabId(aTabId)
   , mRequestId(aRequestId)
+  , mPaymentMethods(aPaymentMethods)
   , mPaymentDetails(aPaymentDetails)
   , mPaymentOptions(aPaymentOptions)
 {
-  uint32_t length;
-  aPaymentMethods->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsIPaymentMethodData> methodData =
-      do_QueryElementAt(aPaymentMethods, index);
-    mPaymentMethods.AppendElement(methodData);
-  }
 }
 
 nsPaymentRequest::~nsPaymentRequest()
@@ -565,16 +572,10 @@ NS_IMETHODIMP
 nsPaymentRequest::GetPaymentMethods(nsIArray** aPaymentMethods)
 {
   NS_ENSURE_ARG_POINTER(aPaymentMethods);
-  nsCOMPtr<nsIMutableArray> methods =
-    do_CreateInstance(NS_ARRAY_CONTRACTID);
-  for (uint32_t index = 0; index < mPaymentMethods.Length(); ++index) {
-    nsCOMPtr<nsIArray> supportedMethods;
-    nsString data;
-    mPaymentMethods[index]->GetSupportedMethods(getter_AddRefs(supportedMethods));
-    mPaymentMethods[index]->GetData(data);
-    nsCOMPtr<nsIPaymentMethodData> method = new nsPaymentMethodData(supportedMethods, data);
-    methods->AppendElement(method, false);
+  if (!mPaymentMethods) {
+    return NS_OK;
   }
+  nsCOMPtr<nsIArray> methods = mPaymentMethods;
   methods.forget(aPaymentMethods);
   return NS_OK;
 }
@@ -619,10 +620,12 @@ nsPaymentRequest::UpdatePaymentDetails(nsIPaymentDetails* aPaymentDetails)
    *   [1] https://www.w3.org/TR/payment-request/#updatewith-method
    */
   mPaymentDetails->GetId(id);
+  /*
+   * No need to check |totalItem| existence here. If merchant doesn't pass
+   * totalItem, it would fail while calling updateWith() in webidl part and
+   * throw a TypeError to merchant.
+   */
   aPaymentDetails->GetTotalItem(getter_AddRefs(totalItem));
-  if (!totalItem) {
-    mPaymentDetails->GetTotalItem(getter_AddRefs(totalItem));
-  }
   aPaymentDetails->GetDisplayItems(getter_AddRefs(displayItems));
   if (!displayItems) {
     mPaymentDetails->GetDisplayItems(getter_AddRefs(displayItems));

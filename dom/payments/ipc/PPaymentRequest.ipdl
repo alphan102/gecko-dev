@@ -36,6 +36,7 @@ struct IPCPaymentDetailsModifier
   IPCPaymentItem total;
   IPCPaymentItem[] additionalDisplayItems;
   nsString data;
+  bool additionalDisplayItemsPassed;
 };
 
 struct IPCPaymentShippingOption
@@ -54,6 +55,9 @@ struct IPCPaymentDetails
   IPCPaymentShippingOption[] shippingOptions;
   IPCPaymentDetailsModifier[] modifiers;
   nsString error;
+  bool displayItemsPassed;
+  bool shippingOptionsPassed;
+  bool modifiersPassed;
 };
 
 struct IPCPaymentOptions

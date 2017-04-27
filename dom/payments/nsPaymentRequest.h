@@ -12,7 +12,6 @@
 #include "nsCOMPtr.h"
 #include "nsCOMArray.h"
 #include "nsString.h"
-#include "nsTArray.h"
 
 namespace mozilla {
 namespace dom {
@@ -30,7 +29,7 @@ public:
 protected:
   ~nsPaymentMethodData();
 
-  nsTArray<nsString> mSupportedMethods;
+  nsCOMPtr<nsIArray> mSupportedMethods;
   nsString mData;
 };
 
@@ -85,9 +84,9 @@ public:
 protected:
   ~nsPaymentDetailsModifier();
 
-  nsTArray<nsString> mSupportedMethods;
+  nsCOMPtr<nsIArray> mSupportedMethods;
   nsCOMPtr<nsIPaymentItem> mTotal;
-  nsCOMArray<nsIPaymentItem> mAdditionalDisplayItems;
+  nsCOMPtr<nsIArray> mAdditionalDisplayItems;
   nsString mData;
 };
 
@@ -131,9 +130,9 @@ protected:
 
   nsString mId;
   nsCOMPtr<nsIPaymentItem> mTotalItem;
-  nsCOMArray<nsIPaymentItem> mDisplayItems;
-  nsCOMArray<nsIPaymentShippingOption> mShippingOptions;
-  nsCOMArray<nsIPaymentDetailsModifier> mModifiers;
+  nsCOMPtr<nsIArray> mDisplayItems;
+  nsCOMPtr<nsIArray> mShippingOptions;
+  nsCOMPtr<nsIArray> mModifiers;
   nsString mError;
 };
 
@@ -177,7 +176,7 @@ protected:
 
   uint64_t mTabId;
   nsString mRequestId;
-  nsCOMArray<nsIPaymentMethodData> mPaymentMethods;
+  nsCOMPtr<nsIArray> mPaymentMethods;
   nsCOMPtr<nsIPaymentDetails> mPaymentDetails;
   nsCOMPtr<nsIPaymentOptions> mPaymentOptions;
 
