@@ -16,7 +16,8 @@ dictionary PaymentDetailsUpdate : PaymentDetailsBase {
              optional PaymentRequestUpdateEventInit eventInitDict),
  SecureContext]
 interface PaymentRequestUpdateEvent : Event {
-  void updateWith(Promise<PaymentDetailsUpdate> d);
+  [Throws]
+  void updateWith(Promise<PaymentDetailsUpdate> detailsPromise);
 };
 
 dictionary PaymentRequestUpdateEventInit : EventInit {

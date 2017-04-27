@@ -8,10 +8,11 @@
 #define mozilla_dom_PaymentRequest_h
 
 #include "mozilla/DOMEventTargetHelper.h"
-#include "mozilla/ErrorResult.h"
 #include "mozilla/dom/PaymentRequestBinding.h"
-#include "nsWrapperCache.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/ErrorResult.h"
+#include "nsWrapperCache.h"
+#include "PaymentRequestUpdateEvent.h"
 
 namespace mozilla {
 namespace dom {
@@ -52,6 +53,13 @@ public:
                      const nsAString& aStr,
                      nsAString& aErrorMsg);
 
+  static bool
+    IsVaildDetailsInit(const PaymentDetailsInit& aDetails, nsAString& aErrorMsg);
+  static bool
+    IsVaildDetailsUpdate(const PaymentDetailsUpdate& aDetails);
+  static bool
+    IsVaildDetailsBase(const PaymentDetailsBase& aDetails, nsAString& aErrorMsg);
+
   static already_AddRefed<PaymentRequest>
     Constructor(const GlobalObject& aGlobal,
                 const Sequence<PaymentMethodData>& aMethodData,
@@ -65,10 +73,12 @@ public:
                           const nsAString& aDetails,
                           const nsAString& aPayerName,
                           const nsAString& aPayerEmail,
-                          const nsAString& aPayerPhone);
+                          const nsAString& aPayerPhone,
+                          nsresult aRv = NS_ERROR_DOM_ABORT_ERR);
   void RespondComplete();
 
   already_AddRefed<Promise> Abort(ErrorResult& aRv);
+  void AbortUpdate(nsresult aRv);
   void RespondAbortPayment(bool aResult);
 
   already_AddRefed<Promise> CanMakePayment(ErrorResult& aRv);
@@ -77,6 +87,9 @@ public:
   void GetId(nsAString& aRetVal) const;
   void GetInternalId(nsAString& aRetVal);
   void SetId(const nsAString& aId);
+
+  bool ReadyForUpdate();
+  void SetUpdating(bool aUpdating);
 
   already_AddRefed<PaymentAddress> GetShippingAddress() const;
   // Update mShippingAddress and fire shippingaddresschange event
@@ -93,6 +106,8 @@ public:
                                  const nsAString& aPhone);
   void GetShippingOption(nsAString& aRetVal) const;
 
+  nsresult UpdatePayment(const PaymentDetailsUpdate& aDetails);
+
   Nullable<PaymentShippingType> GetShippingType() const;
 
   IMPL_EVENT_HANDLER(shippingaddresschange);
@@ -100,6 +115,8 @@ public:
 
 protected:
   ~PaymentRequest();
+
+  nsresult DispatchUpdateEvent(const nsAString& aType);
 
   // Id for internal identification
   nsString mInternalId;
@@ -117,6 +134,12 @@ protected:
   RefPtr<PaymentResponse> mResponse;
   // It is populated when the user provides a shipping address.
   RefPtr<PaymentAddress> mShippingAddress;
+
+  // "true" when there is a pending updateWith() call to update the payment request
+  // and "false" otherwise.
+  bool mUpdating;
+  // The error is set in AbortUpdate(). The value is NS_OK by default.
+  nsresult mUpdateError;
 
   enum {
     eUnknown,

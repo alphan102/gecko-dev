@@ -11,6 +11,7 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/PaymentRequestUpdateEventBinding.h"
+#include "mozilla/dom/PromiseNativeHandler.h"
 
 namespace mozilla {
 namespace dom {
@@ -24,9 +25,11 @@ namespace mozilla {
 namespace dom {
 
 class PaymentRequestUpdateEvent final : public Event
+                                      , public PromiseNativeHandler
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(PaymentRequestUpdateEvent, Event)
 
   PaymentRequestUpdateEvent(EventTarget* aOwner);
 
@@ -34,19 +37,33 @@ public:
     WrapObjectInternal(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
 
+  virtual void
+    ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override;
+  virtual void
+    RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) override;
+
   static already_AddRefed<PaymentRequestUpdateEvent>
-    Constructor(const GlobalObject& global,
-                const nsAString& type,
-                const PaymentRequestUpdateEventInit& eventInitDict,
-                ErrorResult& aRv)
-  { return nullptr; }
+    Constructor(mozilla::dom::EventTarget* aOwner,
+                const nsAString& aType,
+                const PaymentRequestUpdateEventInit& aEventInitDict);
 
-  void UpdateWith(Promise& d) { }
+  static already_AddRefed<PaymentRequestUpdateEvent>
+    Constructor(const GlobalObject& aGlobal,
+                const nsAString& aType,
+                const PaymentRequestUpdateEventInit& aEventInitDict,
+                ErrorResult& aRv);
 
-  bool IsTrusted() const { return true; }
+  void UpdateWith(Promise& aPromise, ErrorResult& aRv);
+
+  bool IsTrusted() const;
 
 protected:
   ~PaymentRequestUpdateEvent();
+
+private:
+  // Indicating whether an updateWith()-initiated update is currently in progress.
+  bool mWaitForUpdate;
+  RefPtr<PaymentRequest> mRequest;
 };
 
 } // namespace dom
