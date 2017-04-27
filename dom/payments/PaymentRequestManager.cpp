@@ -507,12 +507,8 @@ PaymentRequestManager::ChangeShippingOption(const nsAString& aRequestId,
   if (!request) {
     return NS_ERROR_UNEXPECTED;
   }
-  /*
-   *  TODO: Once receive shipping option change from parent side,
-   *        this method is called to create and emit a PaymentRequestUpdateEvent
-   *        to inform the website.
-   */
-  return NS_OK;
+
+  return request->UpdateShippingOption(aOption);
 }
 } // end of namespace dom
 } // end of namespace mozilla
