@@ -5681,6 +5681,10 @@ pref("dom.moduleScripts.enabled", false);
 // event loop runnable. Minimum value of 1.
 pref("dom.timeout.max_consecutive_callbacks", 5);
 
+// Use this preference to house "Payment Request API" during development
+pref("dom.payments.request.enabled", false);
+
+
 #ifdef FUZZING
 pref("fuzzing.enabled", false);
 #endif
