@@ -21,6 +21,9 @@ nsresult
 ConvertISupportsStringstoStrings(nsIArray* aIStrings,
                                  nsTArray<nsString>& aStrings);
 
+nsresult
+CopyISupportsStrings(nsIArray* aSourceStrings, nsIArray** aTargetStrings);
+
 } // end of namespace dom
 } // end of namespace mozilla
 #endif

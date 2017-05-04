@@ -10,8 +10,6 @@
 #include "nsIPaymentRequest.h"
 #include "mozilla/dom/PPaymentRequest.h"
 #include "nsCOMPtr.h"
-#include "nsCOMArray.h"
-#include "nsString.h"
 
 namespace mozilla {
 namespace dom {
