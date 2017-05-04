@@ -29,6 +29,7 @@ nsPaymentAddress::Init(const nsAString& aCountry,
                        const nsAString& aPhone)
 {
   mCountry = aCountry;
+  mAddressLine = aAddressLine;
   mRegion = aRegion;
   mCity = aCity;
   mDependentLocality = aDependentLocality;
@@ -38,7 +39,7 @@ nsPaymentAddress::Init(const nsAString& aCountry,
   mOrganization = aOrganization;
   mRecipient = aRecipient;
   mPhone = aPhone;
-  return ConvertISupportsStringstoStrings(aAddressLine, mAddressLine);
+  return NS_OK;
 }
 
 nsresult
@@ -52,7 +53,7 @@ nsresult
 nsPaymentAddress::GetAddressLine(nsIArray** aAddressLine)
 {
   NS_ENSURE_ARG_POINTER(aAddressLine);
-  return ConvertStringstoISupportsStrings(mAddressLine, aAddressLine);
+  return CopyISupportsStrings(mAddressLine, aAddressLine);
 }
 
 nsresult

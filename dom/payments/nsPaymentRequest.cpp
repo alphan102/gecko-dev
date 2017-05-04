@@ -40,15 +40,7 @@ nsPaymentMethodData::GetSupportedMethods(nsIArray** aSupportedMethods)
 {
   NS_ENSURE_ARG_POINTER(aSupportedMethods);
   MOZ_ASSERT(mSupportedMethods);
-  nsCOMPtr<nsIMutableArray> methods = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  uint32_t length;
-  mSupportedMethods->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsISupportsString> method = do_QueryElementAt(mSupportedMethods, index);
-    methods->AppendElement(method, false);
-  }
-  methods.forget(aSupportedMethods);
-  return NS_OK;
+  return CopyISupportsStrings(mSupportedMethods, aSupportedMethods);
 }
 
 NS_IMETHODIMP
@@ -193,15 +185,7 @@ nsPaymentDetailsModifier::GetSupportedMethods(nsIArray** aSupportedMethods)
 {
   NS_ENSURE_ARG_POINTER(aSupportedMethods);
   MOZ_ASSERT(mSupportedMethods);
-  nsCOMPtr<nsIMutableArray> methods = do_CreateInstance(NS_ARRAY_CONTRACTID);
-  uint32_t length;
-  mSupportedMethods->GetLength(&length);
-  for (uint32_t index = 0; index < length; ++index) {
-    nsCOMPtr<nsISupportsString> method = do_QueryElementAt(mSupportedMethods, index);
-    methods->AppendElement(method, false);
-  }
-  methods.forget(aSupportedMethods);
-  return NS_OK;
+  return CopyISupportsStrings(mSupportedMethods, aSupportedMethods);
 }
 
 NS_IMETHODIMP

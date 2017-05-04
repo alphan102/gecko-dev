@@ -8,9 +8,8 @@
 #define mozilla_dom_nsPaymentAddress_h
 
 #include "nsIPaymentAddress.h"
+#include "nsCOMPtr.h"
 #include "nsIArray.h"
-#include "nsTArray.h"
-#include "nsString.h"
 
 namespace mozilla {
 namespace dom {
@@ -26,7 +25,7 @@ protected:
   ~nsPaymentAddress() {}
 
   nsString mCountry;
-  nsTArray<nsString> mAddressLine;
+  nsCOMPtr<nsIArray> mAddressLine;
   nsString mRegion;
   nsString mCity;
   nsString mDependentLocality;

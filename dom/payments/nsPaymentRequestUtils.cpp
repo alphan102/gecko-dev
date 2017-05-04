@@ -45,5 +45,21 @@ ConvertISupportsStringstoStrings(nsIArray* aIStrings,
   return NS_OK;
 }
 
+nsresult
+CopyISupportsStrings(nsIArray* aSourceStrings, nsIArray** aTargetStrings)
+{
+  NS_ENSURE_ARG_POINTER(aTargetStrings);
+  nsCOMPtr<nsIMutableArray> strings = do_CreateInstance(NS_ARRAY_CONTRACTID);
+  uint32_t length;
+  aSourceStrings->GetLength(&length);
+  for (uint32_t index = 0; index < length; ++index) {
+    nsCOMPtr<nsISupportsString> string = do_QueryElementAt(aSourceStrings, index);
+    MOZ_ASSERT(string);
+    strings->AppendElement(string, false);
+  }
+  strings.forget(aTargetStrings);
+  return NS_OK;
+}
+
 } // end of namespace dom
 } // end of namespace mozilla
