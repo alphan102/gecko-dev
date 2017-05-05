@@ -60,6 +60,7 @@
 #include "mozilla/dom/StorageIPC.h"
 #include "mozilla/dom/power/PowerManagerService.h"
 #include "mozilla/dom/Permissions.h"
+#include "mozilla/dom/PaymentRequestParent.h"
 #include "mozilla/dom/PresentationParent.h"
 #include "mozilla/dom/PPresentationParent.h"
 #include "mozilla/dom/PushNotifier.h"
@@ -3293,6 +3294,27 @@ ContentParent::DeallocPStorageParent(PStorageParent* aActor)
   StorageDBParent* child = static_cast<StorageDBParent*>(aActor);
   child->ReleaseIPDLReference();
   return true;
+}
+
+PPaymentRequestParent*
+ContentParent::AllocPPaymentRequestParent()
+{
+  RefPtr<PaymentRequestParent> actor = new PaymentRequestParent();
+  return actor.forget().take();
+}
+
+bool
+ContentParent::DeallocPPaymentRequestParent(PPaymentRequestParent* aActor)
+{
+  RefPtr<PaymentRequestParent> actor =
+    dont_AddRef(static_cast<PaymentRequestParent*>(aActor));
+  return true;
+}
+
+mozilla::ipc::IPCResult
+ContentParent::RecvPPaymentRequestConstructor(PPaymentRequestParent* aActor)
+{
+  return IPC_OK();
 }
 
 PPresentationParent*

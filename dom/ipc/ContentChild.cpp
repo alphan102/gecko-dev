@@ -181,6 +181,7 @@
 #endif
 
 #include "mozilla/dom/File.h"
+#include "mozilla/dom/PPaymentRequestChild.h"
 #include "mozilla/dom/PPresentationChild.h"
 #include "mozilla/dom/PresentationIPCService.h"
 #include "mozilla/ipc/InputStreamUtils.h"
@@ -1644,6 +1645,20 @@ ContentChild::SendPMemoryStreamConstructor(const uint64_t& aSize)
   }
 
   return PContentChild::SendPMemoryStreamConstructor(aSize);
+}
+
+PPaymentRequestChild*
+ContentChild::AllocPPaymentRequestChild()
+{
+  MOZ_CRASH("We should never be manually allocating PPaymentRequestChild actors");
+  return nullptr;
+}
+
+bool
+ContentChild::DeallocPPaymentRequestChild(PPaymentRequestChild* aActor)
+{
+  delete aActor;
+  return true;
 }
 
 PPresentationChild*

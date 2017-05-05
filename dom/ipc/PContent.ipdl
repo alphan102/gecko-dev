@@ -39,6 +39,7 @@ include protocol PJavaScript;
 include protocol PRemoteSpellcheckEngine;
 include protocol PWebBrowserPersistDocument;
 include protocol PWebrtcGlobal;
+include protocol PPaymentRequest;
 include protocol PPresentation;
 include protocol PURLClassifier;
 include protocol PURLClassifierLocal;
@@ -308,6 +309,7 @@ nested(upto inside_cpow) sync protocol PContent
     manages PRemoteSpellcheckEngine;
     manages PWebBrowserPersistDocument;
     manages PWebrtcGlobal;
+    manages PPaymentRequest;
     manages PPresentation;
     manages PFlyWebPublishedServer;
     manages PURLClassifier;
@@ -747,6 +749,8 @@ parent:
     async PMedia();
 
     async PWebrtcGlobal();
+
+    async PPaymentRequest();
 
     async PPresentation();
 

@@ -291,6 +291,10 @@ public:
 
   virtual bool DeallocPStorageChild(PStorageChild* aActor) override;
 
+  virtual PPaymentRequestChild* AllocPPaymentRequestChild() override;
+
+  virtual bool DeallocPPaymentRequestChild(PPaymentRequestChild*) override;
+
   virtual PPresentationChild* AllocPPresentationChild() override;
 
   virtual bool DeallocPPresentationChild(PPresentationChild* aActor) override;

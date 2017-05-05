@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/PaymentRequest.h"
 #include "nsContentUtils.h"
+#include "PaymentRequestManager.h"
 
 namespace mozilla {
 namespace dom {
@@ -166,23 +167,13 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
   // let serializedData be the result of JSON-serializing modifier.data into a string.
   // null if it is not.
 
+  RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
 
-  // When PaymentRequestManager is ready,
-  //   the following will be in PaymentRequestManager::CreatePayment();
-  RefPtr<PaymentRequest> paymentRequest = new PaymentRequest(window);
-  /*
-   *  Set request's |mId| to details.id if details.id exists.
-   *  Otherwise, set |mId| to internal id.
-   */
-  if (aDetails.mId.WasPassed() && !aDetails.mId.Value().IsEmpty()) {
-    paymentRequest->SetId(aDetails.mId.Value());
-  } else {
-    nsString requestId;
-    paymentRequest->GetInternalId(requestId);
-    paymentRequest->SetId(requestId);
-  }
+  // Create PaymentRequest and set its |mId|
+  RefPtr<PaymentRequest> request;
+  nsresult rv = manager->CreatePayment(window, aMethodData, aDetails, aOptions, getter_AddRefs(request));
 
-  return paymentRequest.forget();;
+  return NS_FAILED(rv) ? nullptr : request.forget();
 }
 
 PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow)

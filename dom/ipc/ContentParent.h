@@ -942,6 +942,12 @@ private:
 
   virtual bool DeallocPStorageParent(PStorageParent* aActor) override;
 
+  virtual PPaymentRequestParent* AllocPPaymentRequestParent() override;
+
+  virtual bool DeallocPPaymentRequestParent(PPaymentRequestParent* aActor) override;
+
+  virtual mozilla::ipc::IPCResult RecvPPaymentRequestConstructor(PPaymentRequestParent* aActor) override;
+
   virtual PPresentationParent* AllocPPresentationParent() override;
 
   virtual bool DeallocPPresentationParent(PPresentationParent* aActor) override;
