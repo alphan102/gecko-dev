@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Payment Request Testing</title>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta content="utf-8" http-equiv="encoding">
+  </head>
+  <body>
+    <script type="text/javascript">
+    const supportedInstruments = [{
+      supportedMethods: [ "MyPay", "TestPay" ]
+    }];
+    const details = {
+      id: "test details",
+      total: {
+        label: "Donation",
+        amount: { currency: "USD", value: "55.00" }
+      },
+      displayItems: [
+        {
+          label: "Original donation amount",
+          amount: { currency: "USD", value: "-65.00", }
+        },
+        {
+          label: "Friends and family discount",
+          amount: { currency: "USD", value: "10.00", }
+        }
+      ],
+      modifiers: [
+        {
+          supportedMethods: ["MyPay"],
+          total: {
+            label: "Discounted donation",
+            amount: { currency: "USD", value: "45.00", }
+          },
+          additionalDisplayItems: [
+            {
+              label: "MyPay discount",
+              amount: { currency: "USD", value: "-10.00", }
+            }
+          ],
+          data: { discountProgramParticipantId: "86328764873265", }
+        },
+      ]
+    };
+    const payRequest = new PaymentRequest(supportedInstruments, details);
+    </script>
+  </body>
+</html>

@@ -16,7 +16,7 @@
  *  chrome process. It is also the IPC agent for payment UI to communicate with
  *  merchant side.
  */
-[uuid(cccd665f-edf3-41fc-ab9b-fc55b37340aa)]
+[scriptable, uuid(cccd665f-edf3-41fc-ab9b-fc55b37340aa)]
 interface nsIPaymentRequestService : nsISupports
 {
   nsIPaymentRequest getPaymentRequestById(in AString requestId);
