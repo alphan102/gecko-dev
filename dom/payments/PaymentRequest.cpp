@@ -40,7 +40,7 @@ NS_IMPL_ADDREF_INHERITED(PaymentRequest, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(PaymentRequest, DOMEventTargetHelper)
 
 bool
-PaymentRequest::IsVaildNumber(const nsAString& aItem,
+PaymentRequest::IsValidNumber(const nsAString& aItem,
                               const nsAString& aStr,
                               nsAString& aErrorMsg)
 {
@@ -78,7 +78,7 @@ PaymentRequest::IsPositiveNumber(const nsAString& aItem,
 }
 
 bool
-PaymentRequest::IsVaildDetailsInit(const PaymentDetailsInit& aDetails, nsAString& aErrorMsg)
+PaymentRequest::IsValidDetailsInit(const PaymentDetailsInit& aDetails, nsAString& aErrorMsg)
 {
   // Check the amount.value of detail.total
   if (!IsPositiveNumber(NS_LITERAL_STRING("details.total"),
@@ -86,11 +86,11 @@ PaymentRequest::IsVaildDetailsInit(const PaymentDetailsInit& aDetails, nsAString
     return false;
   }
 
-  return IsVaildDetailsBase(aDetails, aErrorMsg);
+  return IsValidDetailsBase(aDetails, aErrorMsg);
 }
 
 bool
-PaymentRequest::IsVaildDetailsUpdate(const PaymentDetailsUpdate& aDetails)
+PaymentRequest::IsValidDetailsUpdate(const PaymentDetailsUpdate& aDetails)
 {
   nsString message;
   // Check the amount.value of detail.total
@@ -99,17 +99,17 @@ PaymentRequest::IsVaildDetailsUpdate(const PaymentDetailsUpdate& aDetails)
     return false;
   }
 
-  return IsVaildDetailsBase(aDetails, message);
+  return IsValidDetailsBase(aDetails, message);
 }
 
 bool
-PaymentRequest::IsVaildDetailsBase(const PaymentDetailsBase& aDetails, nsAString& aErrorMsg)
+PaymentRequest::IsValidDetailsBase(const PaymentDetailsBase& aDetails, nsAString& aErrorMsg)
 {
   // Check the amount.value of each item in the display items
   if (aDetails.mDisplayItems.WasPassed()) {
     const Sequence<PaymentItem>& displayItems = aDetails.mDisplayItems.Value();
     for (const PaymentItem& displayItem : displayItems) {
-      if (!IsVaildNumber(displayItem.mLabel,
+      if (!IsValidNumber(displayItem.mLabel,
                          displayItem.mAmount.mValue, aErrorMsg)) {
         return false;
       }
@@ -120,7 +120,7 @@ PaymentRequest::IsVaildDetailsBase(const PaymentDetailsBase& aDetails, nsAString
   if (aDetails.mShippingOptions.WasPassed()) {
     const Sequence<PaymentShippingOption>& shippingOptions = aDetails.mShippingOptions.Value();
     for (const PaymentShippingOption& shippingOption : shippingOptions) {
-      if (!IsVaildNumber(NS_LITERAL_STRING("details.shippingOptions"),
+      if (!IsValidNumber(NS_LITERAL_STRING("details.shippingOptions"),
                          shippingOption.mAmount.mValue, aErrorMsg)) {
         return false;
       }
@@ -138,7 +138,7 @@ PaymentRequest::IsVaildDetailsBase(const PaymentDetailsBase& aDetails, nsAString
       if (modifier.mAdditionalDisplayItems.WasPassed()) {
         const Sequence<PaymentItem>& displayItems = modifier.mAdditionalDisplayItems.Value();
         for (const PaymentItem& displayItem : displayItems) {
-          if (!IsVaildNumber(displayItem.mLabel,
+          if (!IsValidNumber(displayItem.mLabel,
                              displayItem.mAmount.mValue, aErrorMsg)) {
             return false;
           }
@@ -167,7 +167,7 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
 
   // Check payment details
   nsString message;
-  if (!IsVaildDetailsInit(aDetails, message)) {
+  if (!IsValidDetailsInit(aDetails, message)) {
     aRv.ThrowTypeError<MSG_ILLEGAL_PR_CONSTRUCTOR>(message);
     return nullptr;
   }

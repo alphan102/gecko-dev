@@ -45,7 +45,7 @@ public:
                                JS::Handle<JSObject*> aGivenProto) override;
 
   static bool
-    IsVaildNumber(const nsAString& aItem,
+    IsValidNumber(const nsAString& aItem,
                   const nsAString& aStr,
                   nsAString& aErrorMsg);
   static bool
@@ -54,11 +54,11 @@ public:
                      nsAString& aErrorMsg);
 
   static bool
-    IsVaildDetailsInit(const PaymentDetailsInit& aDetails, nsAString& aErrorMsg);
+    IsValidDetailsInit(const PaymentDetailsInit& aDetails, nsAString& aErrorMsg);
   static bool
-    IsVaildDetailsUpdate(const PaymentDetailsUpdate& aDetails);
+    IsValidDetailsUpdate(const PaymentDetailsUpdate& aDetails);
   static bool
-    IsVaildDetailsBase(const PaymentDetailsBase& aDetails, nsAString& aErrorMsg);
+    IsValidDetailsBase(const PaymentDetailsBase& aDetails, nsAString& aErrorMsg);
 
   static already_AddRefed<PaymentRequest>
     Constructor(const GlobalObject& aGlobal,
