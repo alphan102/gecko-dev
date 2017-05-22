@@ -69,7 +69,7 @@ PaymentRequestUpdateEvent::ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value
   }
 
   // Validate and canonicalize the details
-  if (!mRequest->IsVaildDetailsUpdate(details)) {
+  if (!mRequest->IsValidDetailsUpdate(details)) {
     mRequest->AbortUpdate(NS_ERROR_TYPE_ERR);
     return;
   }
