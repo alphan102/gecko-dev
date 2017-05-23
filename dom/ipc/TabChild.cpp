@@ -20,6 +20,7 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/dom/indexedDB/PIndexedDBPermissionRequestChild.h"
+#include "mozilla/dom/PaymentRequestChild.h"
 #include "mozilla/dom/TelemetryScrollProbe.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/ipc/DocumentRendererChild.h"
@@ -3213,6 +3214,25 @@ TabChild::CreatePluginWidget(nsIWidget* aParent, nsIWidget** aOut)
   return rv;
 }
 #endif // XP_WIN
+
+PPaymentRequestChild*
+TabChild::AllocPPaymentRequestChild()
+{
+  MOZ_CRASH("We should never be manually allocating PPaymentRequestChild actors");
+  return nullptr;
+}
+
+bool
+TabChild::DeallocPPaymentRequestChild(PPaymentRequestChild* aActor)
+{
+  /*
+    No need to do anything here.
+    PaymentRequestManager takes care the deallocation by reference counting
+    mechanism. PaymentRequestChild::ActorDestory aslo calls PaymentRequestManager
+    to release the memory.
+  */
+  return true;
+}
 
 ScreenIntSize
 TabChild::GetInnerSize()
