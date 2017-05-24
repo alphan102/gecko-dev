@@ -103,12 +103,16 @@ PaymentRequestUpdateEvent::UpdateWith(Promise& aPromise, ErrorResult& aRv)
 {
   MOZ_ASSERT(mRequest);
 
-  if (mWaitForUpdate || !mRequest->ReadyForUpdate()) {
+  if (mWaitForUpdate || !mRequest->ReadyForUpdate() ||
+      !mEvent->mFlags.mIsBeingDispatched) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
 
   aPromise.AppendNativeHandler(this);
+
+  StopPropagation();
+  StopImmediatePropagation();
   mWaitForUpdate = true;
   mRequest->SetUpdating(true);
 }
