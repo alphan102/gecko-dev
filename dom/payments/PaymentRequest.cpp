@@ -40,6 +40,27 @@ NS_IMPL_ADDREF_INHERITED(PaymentRequest, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(PaymentRequest, DOMEventTargetHelper)
 
 bool
+PaymentRequest::IsValidMethodData(
+  const Sequence<PaymentMethodData>& aMethodData,
+  nsAString& aErrorMsg)
+{
+  if (!aMethodData.Length()) {
+    aErrorMsg.AssignLiteral("At least one payment method is required.");
+    return false;
+  }
+
+  for (const PaymentMethodData& methodData : aMethodData) {
+    if (!methodData.mSupportedMethods.Length()) {
+      aErrorMsg.AssignLiteral(
+        "At least one payment method identifier is required.");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool
 PaymentRequest::IsValidNumber(const nsAString& aItem,
                               const nsAString& aStr,
                               nsAString& aErrorMsg)
@@ -163,11 +184,10 @@ PaymentRequest::Constructor(const GlobalObject& aGlobal,
     return nullptr;
   }
 
-  // Check payment methods is done by webidl
-
-  // Check payment details
+  // Check payment method and details
   nsString message;
-  if (!IsValidDetailsInit(aDetails, message)) {
+  if (!IsValidMethodData(aMethodData, message) ||
+      !IsValidDetailsInit(aDetails, message)) {
     aRv.ThrowTypeError<MSG_ILLEGAL_PR_CONSTRUCTOR>(message);
     return nullptr;
   }
