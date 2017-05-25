@@ -45,6 +45,9 @@ public:
                                JS::Handle<JSObject*> aGivenProto) override;
 
   static bool
+    IsValidMethodData(const Sequence<PaymentMethodData>& aMethodData,
+                      nsAString& aErrorMsg);
+  static bool
     IsValidNumber(const nsAString& aItem,
                   const nsAString& aStr,
                   nsAString& aErrorMsg);
