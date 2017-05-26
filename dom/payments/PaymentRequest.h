@@ -71,6 +71,7 @@ public:
                 ErrorResult& aRv);
 
   already_AddRefed<Promise> Show(ErrorResult& aRv);
+  void RejectShowPayment(nsresult aRejectReason);
   void RespondShowPayment(bool aAccept,
                           const nsAString& aMethodName,
                           const nsAString& aDetails,

@@ -281,6 +281,17 @@ PaymentRequest::AbortUpdate(nsresult aRv)
 }
 
 void
+PaymentRequest::RejectShowPayment(nsresult aRejectReason)
+{
+  MOZ_ASSERT(mAcceptPromise);
+  MOZ_ASSERT(ReadyForUpdate());
+
+  mAcceptPromise->MaybeReject(aRejectReason);
+  mState = eClosed;
+  mAcceptPromise = nullptr;
+}
+
+void
 PaymentRequest::RespondShowPayment(bool aAccept,
                                    const nsAString& aMethodName,
                                    const nsAString& aDetails,
@@ -292,18 +303,19 @@ PaymentRequest::RespondShowPayment(bool aAccept,
   MOZ_ASSERT(mAcceptPromise);
   MOZ_ASSERT(ReadyForUpdate());
 
-  if (aAccept) {
-    // TODO : need to add aDetails into paymentResponse
-    // TODO : need to add shipping option, hard-code "AIR" here
-    RefPtr<PaymentResponse> paymentResponse =
-      new PaymentResponse(GetOwner(), mInternalId, mId, aMethodName,
-                          NS_LITERAL_STRING("AIR"), aPayerName,
-                          aPayerEmail, aPayerPhone);
-    mResponse = paymentResponse;
-    mAcceptPromise->MaybeResolve(paymentResponse);
-  } else {
-    mAcceptPromise->MaybeReject(aRv);
+  if (!aAccept) {
+    RejectShowPayment(aRv);
+    return;
   }
+
+  // TODO : need to add aDetails into paymentResponse
+  // TODO : need to add shipping option, hard-code "AIR" here
+  RefPtr<PaymentResponse> paymentResponse =
+     new PaymentResponse(GetOwner(), mInternalId, mId, aMethodName,
+                         NS_LITERAL_STRING("AIR"), aPayerName,
+                         aPayerEmail, aPayerPhone);
+  mResponse = paymentResponse;
+  mAcceptPromise->MaybeResolve(paymentResponse);
 
   mState = eClosed;
   mAcceptPromise = nullptr;
@@ -403,8 +415,7 @@ PaymentRequest::RespondAbortPayment(bool aSuccess)
   // - Otherwise, we are handling |Abort| method call from merchant.
   //   => Resolve/Reject |mAbortPromise| based on |aSuccess|.
   if (NS_FAILED(mUpdateError)) {
-    RespondShowPayment(false, EmptyString(), EmptyString(), EmptyString(),
-                       EmptyString(), EmptyString(), mUpdateError);
+    RejectShowPayment(mUpdateError);
     mUpdateError = NS_OK;
     return;
   }
@@ -413,12 +424,12 @@ PaymentRequest::RespondAbortPayment(bool aSuccess)
 
   if (aSuccess) {
     mAbortPromise->MaybeResolve(JS::UndefinedHandleValue);
-    mState = eClosed;
+    mAbortPromise = nullptr;
+    RejectShowPayment(NS_ERROR_DOM_ABORT_ERR);
   } else {
-    mAbortPromise->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
+    mAbortPromise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    mAbortPromise = nullptr;
   }
-
-  mAbortPromise = nullptr;
 }
 
 void
