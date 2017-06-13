@@ -262,27 +262,19 @@ PaymentRequestService::RequestPayment(nsIPaymentActionRequest* aRequest)
       MOZ_ASSERT(request);
       uint64_t tabId;
       rv = request->GetTabId(&tabId);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
+      NS_ENSURE_SUCCESS(rv, rv);
 
       nsCOMPtr<nsIArray> methodData;
       rv = request->GetMethodData(getter_AddRefs(methodData));
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return NS_ERROR_FAILURE;
-      }
+      NS_ENSURE_SUCCESS(rv, rv);
 
       nsCOMPtr<nsIPaymentDetails> details;
       rv = request->GetDetails(getter_AddRefs(details));
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return NS_ERROR_FAILURE;
-      }
+      NS_ENSURE_SUCCESS(rv, rv);
 
       nsCOMPtr<nsIPaymentOptions> options;
       rv = request->GetOptions(getter_AddRefs(options));
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return NS_ERROR_FAILURE;
-      }
+      NS_ENSURE_SUCCESS(rv, rv);
 
       nsCOMPtr<nsIPaymentRequest> payment =
         new payments::PaymentRequest(tabId, requestId, methodData, details, options);
@@ -309,6 +301,27 @@ PaymentRequestService::RequestPayment(nsIPaymentActionRequest* aRequest)
       rv = CallTestingUIAction(requestId, type);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return NS_ERROR_FAILURE;
+      }
+      break;
+    }
+    case nsIPaymentActionRequest::UPDATE_ACTION: {
+      nsCOMPtr<nsIPaymentUpdateActionRequest> request = do_QueryInterface(aRequest);
+      MOZ_ASSERT(request);
+
+      nsCOMPtr<nsIPaymentDetails> details;
+      rv = request->GetDetails(getter_AddRefs(details));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      rv = request->GetRequestId(requestId);
+      NS_ENSURE_SUCCESS(rv, rv);
+      nsCOMPtr<nsIPaymentRequest> payment;
+      rv = GetPaymentRequestById(requestId, getter_AddRefs(payment));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+      rv = payment->UpdatePaymentDetails(details);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
       }
       break;
     }
@@ -371,6 +384,45 @@ PaymentRequestService::RespondPayment(nsIPaymentActionResponse* aResponse)
       break;
     }
   }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PaymentRequestService::ChangeShippingAddress(const nsAString& aRequestId,
+                                             nsIPaymentAddress* aAddress)
+{
+  nsCOMPtr<nsIPaymentActionCallback> callback;
+  if (!mCallbackHashtable.Get(aRequestId, getter_AddRefs(callback))) {
+    return NS_ERROR_FAILURE;
+  }
+  if (NS_WARN_IF(!callback)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsresult rv = callback->ChangeShippingAddress(aRequestId, aAddress);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PaymentRequestService::ChangeShippingOption(const nsAString& aRequestId,
+                                            const nsAString& aOption)
+{
+  nsCOMPtr<nsIPaymentActionCallback> callback;
+  if (!mCallbackHashtable.Get(aRequestId, getter_AddRefs(callback))) {
+    return NS_ERROR_FAILURE;
+  }
+  if (NS_WARN_IF(!callback)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsresult rv = callback->ChangeShippingOption(aRequestId, aOption);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
   return NS_OK;
 }
 

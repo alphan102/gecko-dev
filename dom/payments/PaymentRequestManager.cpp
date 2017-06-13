@@ -189,6 +189,41 @@ ConvertDetailsInit(const PaymentDetailsInit& aDetails,
   return NS_OK;
 }
 
+nsresult
+ConvertDetailsUpdate(const PaymentDetailsUpdate& aDetails,
+                     IPCPaymentDetails& aIPCDetails)
+{
+  // Convert PaymentDetailsBase members
+  nsTArray<IPCPaymentItem> displayItems;
+  nsTArray<IPCPaymentShippingOption> shippingOptions;
+  nsTArray<IPCPaymentDetailsModifier> modifiers;
+  nsresult rv = ConvertDetailsBase(aDetails, displayItems, shippingOptions, modifiers);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  // Convert required |total|
+  IPCPaymentItem total;
+  ConvertItem(aDetails.mTotal, total);
+
+  // Convert |error|
+  nsString error(EmptyString());
+  if (aDetails.mError.WasPassed()) {
+    error = aDetails.mError.Value();
+  }
+
+  aIPCDetails = IPCPaymentDetails(EmptyString(), // id
+                                  total,
+                                  displayItems,
+                                  shippingOptions,
+                                  modifiers,
+                                  error,
+                                  aDetails.mDisplayItems.WasPassed(),
+                                  aDetails.mShippingOptions.WasPassed(),
+                                  aDetails.mModifiers.WasPassed());
+  return NS_OK;
+}
+
 void
 ConvertOptions(const PaymentOptions& aOptions,
                IPCPaymentOptions& aIPCOption)
@@ -468,6 +503,26 @@ PaymentRequestManager::CompletePayment(const nsAString& aRequestId,
 }
 
 nsresult
+PaymentRequestManager::UpdatePayment(const nsAString& aRequestId,
+                                     const PaymentDetailsUpdate& aDetails)
+{
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (!request) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  IPCPaymentDetails details;
+  nsresult rv = ConvertDetailsUpdate(aDetails, details);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsAutoString requestId(aRequestId);
+  IPCPaymentUpdateActionRequest action(requestId, details);
+  return SendRequestPayment(request, action);
+}
+
+nsresult
 PaymentRequestManager::RespondPayment(const IPCPaymentActionResponse& aResponse)
 {
   switch (aResponse.type()) {
@@ -533,6 +588,38 @@ PaymentRequestManager::RespondPayment(const IPCPaymentActionResponse& aResponse)
     }
   }
   return NS_OK;
+}
+
+nsresult
+PaymentRequestManager::ChangeShippingAddress(const nsAString& aRequestId,
+                                             const IPCPaymentAddress& aAddress)
+{
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (NS_WARN_IF(!request)) {
+    return NS_ERROR_FAILURE;
+  }
+  return request->UpdateShippingAddress(aAddress.country(),
+                                        aAddress.addressLine(),
+                                        aAddress.region(),
+                                        aAddress.city(),
+                                        aAddress.dependentLocality(),
+                                        aAddress.postalCode(),
+                                        aAddress.sortingCode(),
+                                        aAddress.languageCode(),
+                                        aAddress.organization(),
+                                        aAddress.recipient(),
+                                        aAddress.phone());
+}
+
+nsresult
+PaymentRequestManager::ChangeShippingOption(const nsAString& aRequestId,
+                                            const nsAString& aOption)
+{
+  RefPtr<PaymentRequest> request = GetPaymentRequestById(aRequestId);
+  if (NS_WARN_IF(!request)) {
+    return NS_ERROR_FAILURE;
+  }
+  return request->UpdateShippingOption(aOption);
 }
 
 } // end of namespace dom
